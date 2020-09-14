@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
 		}
 		
 		for (j = 0 ; j < M2_size; j++){//Модуль разности
-			M2[j] = abs(M2_copy[j] - M2[j]);
+			M2[j] = fabs(M2_copy[j] - M2[j]);
 		}
 		
 		/* Отсортировать массив с результатами указанным методом */
