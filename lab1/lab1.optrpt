@@ -1,0 +1,158 @@
+Intel(R) Advisor can now assist with vectorization and show optimization
+  report messages with your source code.
+See "https://software.intel.com/en-us/intel-advisor-xe" for details.
+
+
+Begin optimization report for: main(int, char **)
+
+    Report from: Auto-parallelization optimizations [par]
+
+
+LOOP BEGIN at lab1.c(17,5)
+   remark #17104: loop was not parallelized: existence of parallel dependence
+
+   LOOP BEGIN at lab1.c(22,3)
+      remark #17104: loop was not parallelized: existence of parallel dependence
+   LOOP END
+
+   LOOP BEGIN at lab1.c(27,3)
+      remark #17104: loop was not parallelized: existence of parallel dependence
+   LOOP END
+
+   LOOP BEGIN at lab1.c(34,3)
+   <Peeled loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(34,3)
+      remark #17108: loop was not parallelized: insufficient computational work
+   LOOP END
+
+   LOOP BEGIN at lab1.c(34,3)
+   <Remainder loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(38,3)
+   <Peeled loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(38,3)
+      remark #17109: LOOP WAS AUTO-PARALLELIZED
+   LOOP END
+
+   LOOP BEGIN at lab1.c(38,3)
+   <Alternate Alignment Vectorized Loop>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(38,3)
+   <Remainder loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(42,3)
+   <Peeled loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(42,3)
+      remark #17109: LOOP WAS AUTO-PARALLELIZED
+   LOOP END
+
+   LOOP BEGIN at lab1.c(42,3)
+   <Alternate Alignment Vectorized Loop>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(42,3)
+   <Remainder loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(49,3)
+      remark #17104: loop was not parallelized: existence of parallel dependence
+
+      LOOP BEGIN at lab1.c(52,4)
+         remark #17104: loop was not parallelized: existence of parallel dependence
+      LOOP END
+   LOOP END
+
+   LOOP BEGIN at lab1.c(61,3)
+   <Peeled loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(61,3)
+      remark #17109: LOOP WAS AUTO-PARALLELIZED
+   LOOP END
+
+   LOOP BEGIN at lab1.c(61,3)
+   <Remainder loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(61,3)
+   <Remainder loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(67,3)
+   <Peeled loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at lab1.c(67,3)
+      remark #17109: LOOP WAS AUTO-PARALLELIZED
+   LOOP END
+
+   LOOP BEGIN at lab1.c(67,3)
+   <Remainder loop for vectorization>
+   LOOP END
+LOOP END
+
+LOOP BEGIN at lab1.c(38,3)
+<Peeled loop for vectorization>
+LOOP END
+
+LOOP BEGIN at lab1.c(38,3)
+   remark #25460: No loop optimizations reported
+LOOP END
+
+LOOP BEGIN at lab1.c(38,3)
+<Alternate Alignment Vectorized Loop>
+LOOP END
+
+LOOP BEGIN at lab1.c(38,3)
+<Remainder loop for vectorization>
+LOOP END
+
+LOOP BEGIN at lab1.c(42,3)
+<Peeled loop for vectorization>
+LOOP END
+
+LOOP BEGIN at lab1.c(42,3)
+   remark #25460: No loop optimizations reported
+LOOP END
+
+LOOP BEGIN at lab1.c(42,3)
+<Alternate Alignment Vectorized Loop>
+LOOP END
+
+LOOP BEGIN at lab1.c(42,3)
+<Remainder loop for vectorization>
+LOOP END
+
+LOOP BEGIN at lab1.c(61,3)
+<Peeled loop for vectorization>
+LOOP END
+
+LOOP BEGIN at lab1.c(61,3)
+   remark #25460: No loop optimizations reported
+LOOP END
+
+LOOP BEGIN at lab1.c(61,3)
+<Remainder loop for vectorization>
+LOOP END
+
+LOOP BEGIN at lab1.c(67,3)
+<Peeled loop for vectorization>
+LOOP END
+
+LOOP BEGIN at lab1.c(67,3)
+   remark #25460: No loop optimizations reported
+LOOP END
+
+LOOP BEGIN at lab1.c(67,3)
+<Remainder loop for vectorization>
+LOOP END
+===========================================================================
