@@ -8,151 +8,130 @@ Begin optimization report for: main(int, char **)
     Report from: Auto-parallelization optimizations [par]
 
 
-LOOP BEGIN at lab1.c(17,5)
+LOOP BEGIN at lab1.c(24,5)
    remark #17104: loop was not parallelized: existence of parallel dependence
 
-   LOOP BEGIN at lab1.c(22,3)
+   LOOP BEGIN at lab1.c(29,9)
       remark #17104: loop was not parallelized: existence of parallel dependence
    LOOP END
 
-   LOOP BEGIN at lab1.c(27,3)
+   LOOP BEGIN at lab1.c(38,9)
       remark #17104: loop was not parallelized: existence of parallel dependence
    LOOP END
 
-   LOOP BEGIN at lab1.c(34,3)
+   LOOP BEGIN at lab1.c(51,9)
    <Peeled loop for vectorization>
    LOOP END
 
-   LOOP BEGIN at lab1.c(34,3)
-      remark #17108: loop was not parallelized: insufficient computational work
-   LOOP END
-
-   LOOP BEGIN at lab1.c(34,3)
-   <Remainder loop for vectorization>
-   LOOP END
-
-   LOOP BEGIN at lab1.c(38,3)
-   <Peeled loop for vectorization>
-   LOOP END
-
-   LOOP BEGIN at lab1.c(38,3)
+   LOOP BEGIN at lab1.c(51,9)
       remark #17109: LOOP WAS AUTO-PARALLELIZED
    LOOP END
 
-   LOOP BEGIN at lab1.c(38,3)
-   <Alternate Alignment Vectorized Loop>
-   LOOP END
-
-   LOOP BEGIN at lab1.c(38,3)
+   LOOP BEGIN at lab1.c(51,9)
    <Remainder loop for vectorization>
    LOOP END
 
-   LOOP BEGIN at lab1.c(42,3)
+   LOOP BEGIN at lab1.c(55,9)
    <Peeled loop for vectorization>
    LOOP END
 
-   LOOP BEGIN at lab1.c(42,3)
-      remark #17109: LOOP WAS AUTO-PARALLELIZED
+   LOOP BEGIN at lab1.c(55,9)
+      remark #17100: FUSED LOOP WAS AUTO-PARALLELIZED
    LOOP END
 
-   LOOP BEGIN at lab1.c(42,3)
+   LOOP BEGIN at lab1.c(64,9)
+   LOOP END
+
+   LOOP BEGIN at lab1.c(55,9)
    <Alternate Alignment Vectorized Loop>
    LOOP END
 
-   LOOP BEGIN at lab1.c(42,3)
+   LOOP BEGIN at lab1.c(55,9)
    <Remainder loop for vectorization>
    LOOP END
 
-   LOOP BEGIN at lab1.c(49,3)
+   LOOP BEGIN at lab1.c(72,9)
       remark #17104: loop was not parallelized: existence of parallel dependence
 
-      LOOP BEGIN at lab1.c(52,4)
+      LOOP BEGIN at lab1.c(75,13)
          remark #17104: loop was not parallelized: existence of parallel dependence
       LOOP END
    LOOP END
 
-   LOOP BEGIN at lab1.c(61,3)
+   LOOP BEGIN at lab1.c(83,9)
    <Peeled loop for vectorization>
    LOOP END
 
-   LOOP BEGIN at lab1.c(61,3)
+   LOOP BEGIN at lab1.c(83,9)
       remark #17109: LOOP WAS AUTO-PARALLELIZED
    LOOP END
 
-   LOOP BEGIN at lab1.c(61,3)
+   LOOP BEGIN at lab1.c(83,9)
    <Remainder loop for vectorization>
    LOOP END
 
-   LOOP BEGIN at lab1.c(61,3)
+   LOOP BEGIN at lab1.c(83,9)
    <Remainder loop for vectorization>
    LOOP END
 
-   LOOP BEGIN at lab1.c(67,3)
+   LOOP BEGIN at lab1.c(89,9)
    <Peeled loop for vectorization>
    LOOP END
 
-   LOOP BEGIN at lab1.c(67,3)
+   LOOP BEGIN at lab1.c(89,9)
       remark #17109: LOOP WAS AUTO-PARALLELIZED
    LOOP END
 
-   LOOP BEGIN at lab1.c(67,3)
+   LOOP BEGIN at lab1.c(89,9)
    <Remainder loop for vectorization>
    LOOP END
 LOOP END
 
-LOOP BEGIN at lab1.c(38,3)
+LOOP BEGIN at lab1.c(51,9)
 <Peeled loop for vectorization>
 LOOP END
 
-LOOP BEGIN at lab1.c(38,3)
+LOOP BEGIN at lab1.c(51,9)
    remark #25460: No loop optimizations reported
 LOOP END
 
-LOOP BEGIN at lab1.c(38,3)
-<Alternate Alignment Vectorized Loop>
-LOOP END
-
-LOOP BEGIN at lab1.c(38,3)
+LOOP BEGIN at lab1.c(51,9)
 <Remainder loop for vectorization>
 LOOP END
 
-LOOP BEGIN at lab1.c(42,3)
+LOOP BEGIN at lab1.c(55,9)
 <Peeled loop for vectorization>
 LOOP END
 
-LOOP BEGIN at lab1.c(42,3)
+LOOP BEGIN at lab1.c(55,9)
    remark #25460: No loop optimizations reported
 LOOP END
 
-LOOP BEGIN at lab1.c(42,3)
-<Alternate Alignment Vectorized Loop>
-LOOP END
-
-LOOP BEGIN at lab1.c(42,3)
+LOOP BEGIN at lab1.c(55,9)
 <Remainder loop for vectorization>
 LOOP END
 
-LOOP BEGIN at lab1.c(61,3)
+LOOP BEGIN at lab1.c(83,9)
 <Peeled loop for vectorization>
 LOOP END
 
-LOOP BEGIN at lab1.c(61,3)
+LOOP BEGIN at lab1.c(83,9)
    remark #25460: No loop optimizations reported
 LOOP END
 
-LOOP BEGIN at lab1.c(61,3)
+LOOP BEGIN at lab1.c(83,9)
 <Remainder loop for vectorization>
 LOOP END
 
-LOOP BEGIN at lab1.c(67,3)
+LOOP BEGIN at lab1.c(89,9)
 <Peeled loop for vectorization>
 LOOP END
 
-LOOP BEGIN at lab1.c(67,3)
+LOOP BEGIN at lab1.c(89,9)
    remark #25460: No loop optimizations reported
 LOOP END
 
-LOOP BEGIN at lab1.c(67,3)
+LOOP BEGIN at lab1.c(89,9)
 <Remainder loop for vectorization>
 LOOP END
 ===========================================================================

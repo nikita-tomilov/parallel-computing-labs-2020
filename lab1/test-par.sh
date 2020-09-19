@@ -1,10 +1,10 @@
 #!/bin/bash
-rm -rf *.txt
+rm -rf logs-*
 echo "On single thread"
 ./test-seq.sh | tee logs-1.txt
 for T in `echo 2 4 6 8 12`; do
 	echo "Threads count:" $T
-	for N in `seq 2300 3470 37000`; do
+	for N in `seq 1200 3380 35000`; do
 		./lab1-par-$T $N | grep passed | tee -a logs-$T.txt
 	done
 done
