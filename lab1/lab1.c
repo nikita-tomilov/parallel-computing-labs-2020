@@ -30,16 +30,21 @@ int main(int argc, char *argv[]) {
             M1[j] = custom_rand(1.0, A, &seed);
         }
 
-        for (j = 0; j < 5; j++) {// вывод первых 5 элементов
-            printf("M1[%d] = %.5f, ", j, M1[j]);
-        }
-        printf("\n");
+//        for (j = 0; j < 5; j++) {// вывод первых 5 элементов
+//            printf("M1[%d] = %.5f, ", j, M1[j]);
+//        }
+//        printf("\n");
 
         for (j = 0; j < M2_size; j++) {// генерим М2 и его копию
             double rand = custom_rand(A, 10.0 * A, &seed);
             M2[j] = rand;
             M2_copy[j] = rand;
         }
+//
+//        for (j = 0; j < 5; j++) {// вывод первых 5 элементов
+//            printf("M2[%d] = %.5f, ", j, M2[j]);
+//        }
+//        printf("\n");
 
         /* Решить поставленную задачу, заполнить массив с результатами */
         //aka этап Map для M1
