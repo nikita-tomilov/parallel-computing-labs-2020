@@ -1,2 +1,4 @@
 lab1-par-*
 lab1-seq
+.idea/
+cmake-build-debug/
