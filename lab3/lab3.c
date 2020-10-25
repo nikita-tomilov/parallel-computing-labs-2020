@@ -33,7 +33,6 @@ int main(int argc, char *argv[]) {
         unsigned int seed = i;
 #pragma omp parallel for default(none) shared(seed, M1, A, N) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
         for (j = 0; j < N; j++) {// генерим М1
-            printf("%d\n", j);
             M1[j] = custom_rand(1.0, A, &seed);
         }
 
