@@ -8,7 +8,6 @@
 
 double custom_rand(double from, double to, unsigned int *seed) {
     int random_int;
-#pragma omp critical
     random_int = rand_r(seed); //random [0; RAND_MAX]
     double random_double = (double) (random_int) / RAND_MAX; //random [0.0; 1.0]
     random_double = (to - from) * random_double; //random [0.0; (to - from)]
@@ -31,12 +30,10 @@ int main(int argc, char *argv[]) {
         /* Заполнить массив исходных данных размером N */
         //aka Этап Generate
         unsigned int seed = i;
-#pragma omp parallel for default(none) shared(seed, M1, A, N) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
         for (j = 0; j < N; j++) {// генерим М1
             M1[j] = custom_rand(1.0, A, &seed);
         }
 
-#pragma omp parallel for default(none) shared(seed, M2, M2_copy, A, N, M2_size) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
         for (j = 0; j < M2_size; j++) {// генерим М2 и его копию
             double rand = custom_rand(A, 10.0 * A, &seed);
             M2[j] = rand;
