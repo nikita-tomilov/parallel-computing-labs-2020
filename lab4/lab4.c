@@ -97,6 +97,7 @@ int main(int argc, char *argv[]) {
         /* Отсортировать массив с результатами указанным методом */
         //aka этап Sort
         
+		#ifdef _OPENMP
 		int k = omp_get_num_procs();
 #pragma omp parallel default(none) shared(M2, M2_size) num_threads(k)
 		{
@@ -129,6 +130,7 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
+#endif
 		
         long location;
         double elem;
