@@ -34,7 +34,6 @@ double custom_rand(double from, double to, unsigned int *seed) {
 }
 
 void *printPercent(void *i) {
-    printf("im in printPercent and I is %d\n", *(int *) i);
     while (*(int *) i < 50) {
         printf("%d%% completed\n", 2 * *(int *) i);
         usleep(1000000);
