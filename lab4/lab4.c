@@ -5,15 +5,58 @@
 #include <assert.h>
 
 #define MIN(a, b) (((a)<(b))?(a):(b))
+
+#include <sys/time.h>
+
 #ifdef _OPENMP
 
 #include "omp.h"
 
+void merge(double arr[], int l, int m, int r) {
+    int n1 = m - l + 1;
+    int n2 = r - m;
+    double L[n1], R[n2];
+    for (int i = 0; i < n1; i++)
+        L[i] = arr[l + i];
+    for (int j = 0; j < n2; j++)
+        R[j] = arr[m + 1 + j];
+    int i = 0;
+    int j = 0;
+    int k = l;
+    while (i < n1 && j < n2) {
+        if (L[i] <= R[j]) {
+            arr[k] = L[i];
+            i++;
+        } else {
+            arr[k] = R[j];
+            j++;
+        }
+        k++;
+    }
+    while (i < n1) {
+        arr[k] = L[i];
+        i++;
+        k++;
+    }
+    while (j < n2) {
+        arr[k] = R[j];
+        j++;
+        k++;
+    }
+}
+
+void mergeSort(double arr[], int l, int r) {
+    if (l < r) {
+        int m = l + (r - l) / 2;
+        mergeSort(arr, l, m);
+        mergeSort(arr, m + 1, r);
+        merge(arr, l, m, r);
+    }
+}
+
 #else
 
 #include <pthread.h>
-
-#include <sys/time.h>
 
 int omp_set_num_threads(int M) { return 1; }
 
@@ -136,7 +179,11 @@ int main(int argc, char *argv[]) {
                         M2[location + 1] = elem;
                     }
                 }
-#endif
+                //здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
+                //но сам массив еще нет. когда у нас массив частично сортирован, mergeSort - то что нужно
+                mergeSort(M2, 0, M2_size - 1);
+
+#else
                 long location;
                 double elem;
                 for (j = 1; j < M2_size; j++) {//Сортировка вставками (Insertion sort).
@@ -148,7 +195,7 @@ int main(int argc, char *argv[]) {
                     }
                     M2[location + 1] = elem;
                 }
-
+#endif
                 double minNotZero = 0;
 #pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero)
                 for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
