@@ -2,7 +2,9 @@
 #include <stdlib.h>
 #include <math.h>
 #include <unistd.h>
+#include <assert.h>
 
+#define MIN(a, b) (((a)<(b))?(a):(b))
 #ifdef _OPENMP
 
 #include "omp.h"
@@ -120,34 +122,21 @@ int main(int argc, char *argv[]) {
                     const int num_threads = omp_get_num_threads(); //кол-во тредов выполняют секцию
                     const int chunk = M2_size / num_threads + 1; // размер куска для треда
                     const int cur_thread = omp_get_thread_num();//текущий номер треда
-                    //printf("hello in sort from %d out of %d\n", cur_thread, num_threads);
+                    const int from = chunk * cur_thread;
+                    const int to = MIN(chunk * (cur_thread + 1), M2_size);
                     long location;
                     double elem;
-                    if (omp_get_num_threads() - 1 != cur_thread) // цикл для всех тредов кроме последнего
-                        for (int p = chunk * cur_thread; p < chunk * (cur_thread + 1); p++) {
-                            elem = M2[p];
-                            location = p - 1;
-                            while (location >= 0 && M2[location] > elem) {
-                                M2[location + 1] = M2[location];
-                                location = location - 1;
-                            }
-                            M2[location + 1] = elem;
+                    for (int p = from; p < to; p++) {
+                        elem = M2[p];
+                        location = p - 1;
+                        while (location >= 0 && M2[location] > elem) {
+                            M2[location + 1] = M2[location];
+                            location = location - 1;
                         }
-                    else { // цикл для последнего треда как как нет гарантии что массив поровну разделится
-
-                        for (int p = chunk * cur_thread; p < M2_size; p++) {
-                            elem = M2[p];
-                            location = p - 1;
-                            while (location >= 0 && M2[location] > elem) {
-                                M2[location + 1] = M2[location];
-                                location = location - 1;
-                            }
-                            M2[location + 1] = elem;
-                        }
+                        M2[location + 1] = elem;
                     }
                 }
-#endif
-
+#else
                 long location;
                 double elem;
                 for (j = 1; j < M2_size; j++) {//Сортировка вставками (Insertion sort).
@@ -159,7 +148,7 @@ int main(int argc, char *argv[]) {
                     }
                     M2[location + 1] = elem;
                 }
-
+#endif
                 double minNotZero = 0;
 #pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero)
                 for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
@@ -185,6 +174,7 @@ int main(int argc, char *argv[]) {
             delta_ms = (omp_get_wtime() - start) * 1000;
         }
     }
+
 #else
     gettimeofday(&T2, NULL);   /* запомнить текущее время T2 */
     delta_ms = 1000 * (T2.tv_sec - T1.tv_sec) + (T2.tv_usec - T1.tv_usec) / 1000;
