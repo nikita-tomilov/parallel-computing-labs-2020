@@ -21,9 +21,9 @@ int omp_get_thread_num() { return 0; }
 
 int omp_get_num_procs() { return 0; }
 
-#endif
+void omp_set_nested() {}
 
-#define CONST_NUM_THREADS 7
+#endif
 
 double custom_rand(double from, double to, unsigned int *seed) {
     int random_int;
@@ -47,7 +47,8 @@ int main(int argc, char *argv[]) {
     int N;
 #ifdef _OPENMP
     double start = omp_get_wtime();
-#pragma omp parallel sections default(none) shared(i, argv, N)
+    omp_set_nested(1);
+#pragma omp parallel sections default(none) shared(i, argv, N, delta_ms, start)
     {
 #pragma omp section
         {
@@ -57,9 +58,9 @@ int main(int argc, char *argv[]) {
         {
 #else
             struct timeval T1, T2;
-    gettimeofday(&T1, NULL); /* запомнить текущее время T1 */
-    pthread_t thread;
-    pthread_create(&thread, NULL, printPercent, &i);
+            gettimeofday(&T1, NULL); /* запомнить текущее время T1 */
+            pthread_t thread;
+            pthread_create(&thread, NULL, printPercent, &i);
 #endif
 
             int j;
@@ -119,7 +120,7 @@ int main(int argc, char *argv[]) {
                     const int num_threads = omp_get_num_threads(); //кол-во тредов выполняют секцию
                     const int chunk = M2_size / num_threads + 1; // размер куска для треда
                     const int cur_thread = omp_get_thread_num();//текущий номер треда
-
+                    //printf("hello in sort from %d out of %d\n", cur_thread, num_threads);
                     long location;
                     double elem;
                     if (omp_get_num_threads() - 1 != cur_thread) // цикл для всех тредов кроме последнего
@@ -181,10 +182,9 @@ int main(int argc, char *argv[]) {
             free(M2_copy);
 
 #ifdef _OPENMP
-
+            delta_ms = (omp_get_wtime() - start) * 1000;
         }
     }
-    delta_ms = (omp_get_wtime() - start) * 1000;
 #else
     gettimeofday(&T2, NULL);   /* запомнить текущее время T2 */
     delta_ms = 1000 * (T2.tv_sec - T1.tv_sec) + (T2.tv_usec - T1.tv_usec) / 1000;
