@@ -177,7 +177,7 @@ int main(int argc, char *argv[]) {
                     for (int p = from + 1; p < to; p++) {
                         elem = M2[p];
                         location = p - 1;
-                        while (location >= 0 && M2[location] > elem) {
+                        while (location >= from && M2[location] > elem) {
                             M2[location + 1] = M2[location];
                             location = location - 1;
                         }
