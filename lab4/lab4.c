@@ -120,13 +120,13 @@ int main(int argc, char *argv[]) {
 #pragma omp parallel default(none) shared(M2, M2_size) num_threads(k)
                 {
                     const int num_threads = omp_get_num_threads(); //кол-во тредов выполняют секцию
-                    const int chunk = M2_size / num_threads + 1; // размер куска для треда
+                    const int chunk_size = M2_size / num_threads + 1; // размер куска для треда
                     const int cur_thread = omp_get_thread_num();//текущий номер треда
-                    const int from = chunk * cur_thread;
-                    const int to = MIN(chunk * (cur_thread + 1), M2_size);
+                    const int from = chunk_size * cur_thread;
+                    const int to = MIN(chunk_size * (cur_thread + 1), M2_size);
                     long location;
                     double elem;
-                    for (int p = from; p < to; p++) {
+                    for (int p = from + 1; p < to; p++) {
                         elem = M2[p];
                         location = p - 1;
                         while (location >= 0 && M2[location] > elem) {
@@ -136,7 +136,7 @@ int main(int argc, char *argv[]) {
                         M2[location + 1] = elem;
                     }
                 }
-#else
+#endif
                 long location;
                 double elem;
                 for (j = 1; j < M2_size; j++) {//Сортировка вставками (Insertion sort).
@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
                     }
                     M2[location + 1] = elem;
                 }
-#endif
+
                 double minNotZero = 0;
 #pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero)
                 for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
