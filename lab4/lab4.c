@@ -84,7 +84,7 @@ double custom_rand(double from, double to, unsigned int *seed) {
 }
 
 void *printPercent(void *i) {
-    while (*(int *) i < 50) {
+    while (*(int *) i < MAX_I) {
         printf("%d%% completed\n", 2 * *(int *) i);
         usleep(1000000);
     }
