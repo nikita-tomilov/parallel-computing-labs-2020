@@ -3,6 +3,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <assert.h>
+#include <float.h>
 
 #define MIN(a, b) (((a)<(b))?(a):(b))
 
@@ -200,7 +201,7 @@ int main(int argc, char *argv[]) {
                     M2[location + 1] = elem;
                 }
 #endif
-                double minNotZero = 0;
+                double minNotZero = DBL_MAX;
 #pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
                 for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
                     if (M2[j] > 0 && M2[j] < minNotZero)
