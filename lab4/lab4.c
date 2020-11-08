@@ -6,6 +6,10 @@
 
 #define MIN(a, b) (((a)<(b))?(a):(b))
 
+#define SCHEDULE_STRING
+#define CONST_NUM_THREADS 4
+#define MAX_I 50
+
 #include <sys/time.h>
 
 #ifdef _OPENMP
@@ -117,7 +121,7 @@ int main(int argc, char *argv[]) {
             unsigned int A = (unsigned int) 240;
 
 
-            for (i = 0; i < 50; i++) /* 50 экспериментов */
+            for (i = 0; i < MAX_I; i++) /* 50 экспериментов */
             {
                 /* Заполнить массив исходных данных размером N */
                 //aka Этап Generate
@@ -134,13 +138,13 @@ int main(int argc, char *argv[]) {
 
                 /* Решить поставленную задачу, заполнить массив с результатами */
                 //aka этап Map для M1
-#pragma omp parallel for default(none) shared(M1, N)
+#pragma omp parallel for default(none) shared(M1, N) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
                 for (j = 0; j < N; j++) {//Кубический корень после деления на число e
                     M1[j] = pow((double) (M1[j] / exp(1.0)), 1.0 / 3.0);
                 }
 
                 //этап Map для M2
-#pragma omp parallel for default(none) shared(M2, M2_copy, M2_size)
+#pragma omp parallel for default(none) shared(M2, M2_copy, M2_size) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
                 for (j = 0; j < M2_size; j++) {//Десятичный логарифм, возведенный в степень e
                     double sum = M2_copy[j]; //для нач элемента массива предыдущий элемент равен0
                     if (j > 0) {
@@ -150,7 +154,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 //этап Merge
-#pragma omp parallel for default(none) shared(M1, M2, M2_size)
+#pragma omp parallel for default(none) shared(M1, M2, M2_size) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
                 for (j = 0; j < M2_size; j++) {//Модуль разности
                     M2[j] = fabs(M1[j] - M2[j]);
                 }
@@ -197,14 +201,14 @@ int main(int argc, char *argv[]) {
                 }
 #endif
                 double minNotZero = 0;
-#pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero)
+#pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
                 for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
                     if (M2[j] > 0 && M2[j] < minNotZero)
                         minNotZero = M2[j];
                 }
 
                 double X = 0;
-#pragma omp parallel for default(none) shared(M2, M2_size, minNotZero, i) reduction(+:X)
+#pragma omp parallel for default(none) shared(M2, M2_size, minNotZero, i) reduction(+:X) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
                 for (j = 0; j < M2_size; j++) {//Рассчитать сумму синусов тех элементов массиваМ2,
                     //которые при делении на минимальный ненулевой
                     //элемент массива М2 дают чётное число

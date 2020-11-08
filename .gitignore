@@ -2,4 +2,5 @@
 *.iml
 cmake-build-debug/
 lab3/lab3
+lab4/lab4
 lab3/lab3-nomp
