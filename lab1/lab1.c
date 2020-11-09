@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <math.h>
+#include <float.h>
 
 double custom_rand(double from, double to, unsigned int* seed) {
     int random_int = rand_r(seed); //random [0; RAND_MAX]
@@ -79,7 +80,7 @@ int main(int argc, char *argv[]) {
             M2[location + 1] = elem;
         }
 
-        double minNotZero = 0;
+        double minNotZero = DBL_MAX;
         for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
             if (M2[j] > 0 && M2[j] < minNotZero)
                 minNotZero = M2[j];
