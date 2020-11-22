@@ -74,8 +74,8 @@ void *printPercent(void *i) {
 }
 
 typedef struct {
-    double *array;
-    double *arrayCopy;
+    double *array1;
+    double *array2;
     long offset;
     long count;
 } Chunk_t;
@@ -86,8 +86,8 @@ typedef struct {
 } ThreadInfo_t;
 
 pthread_mutex_t mutex;
-double *arrayForProcessing;
-double *arrayCopy;
+double *array1;
+double *array2;
 long arrayLength;
 long currentOffset;
 long chunkSize;
@@ -95,8 +95,8 @@ long chunkSize;
 Chunk_t getNextChunk(int threadId) {
     pthread_mutex_lock(&mutex);
     Chunk_t ans;
-    ans.array = arrayForProcessing;
-    ans.arrayCopy = arrayCopy;
+    ans.array1 = array1;
+    ans.array2 = array2;
     if (currentOffset >= arrayLength) {
         ans.count = 0;
         ans.offset = 0;
@@ -121,13 +121,13 @@ void threadFunc(void *args) {
     }
 }
 
-void multiThreadComputing(double _array[], double _arrayCopy[], long _arrayLength, int threadsNum, void *func,
+void multiThreadComputing(double _array1[], double _array2[], long _arrayLength, int threadsNum, void *func,
                           void *funcReduction, int _chunkSize) {
     pthread_t *thread = (pthread_t *) malloc(threadsNum * sizeof(pthread_t)); //создаем потоки
     ThreadInfo_t *info = (ThreadInfo_t *) malloc(threadsNum * sizeof(ThreadInfo_t)); //создаем инфо
 
-    arrayForProcessing = _array;
-    arrayCopy = _arrayCopy;
+    array1 = _array1;
+    array2 = _array2;
     arrayLength = _arrayLength;
     chunkSize = _chunkSize;
     currentOffset = 0;
@@ -146,19 +146,19 @@ void multiThreadComputing(double _array[], double _arrayCopy[], long _arrayLengt
 }
 
 void m1Map(Chunk_t chunk) {
-    double *array = chunk.array;
+    double *array = chunk.array1;
     long N = chunk.offset + chunk.count;
-    //printf("m1map over %p from %ld len %ld\n", array, chunk.offset, chunk.count);
+    //printf("m1map over %p from %ld len %ld\n", array1, chunk.offset, chunk.count);
     for (long j = chunk.offset; j < N; j++) {//Кубический корень после деления на число e
         array[j] = pow((double) (array[j] / exp(1.0)), 1.0 / 3.0);
     }
 }
 
 void m2Map(Chunk_t chunk) {
-    double *array = chunk.array;
-    double *array_copy = chunk.arrayCopy;
+    double *array = chunk.array1;
+    double *array_copy = chunk.array2;
     long N = chunk.offset + chunk.count;
-    //printf("m2map over %p from %ld len %ld\n", array, chunk.offset, chunk.count);
+    //printf("m2map over %p from %ld len %ld\n", array1, chunk.offset, chunk.count);
     for (long j = chunk.offset; j < N; j++) {
         double sum = array_copy[j]; //для нач элемента массива предыдущий элемент равен0
         if (j > 0) {
@@ -166,6 +166,42 @@ void m2Map(Chunk_t chunk) {
         }
         array[j] = pow(log10(sum), exp(1.0));
     }
+}
+
+void Merge(Chunk_t chunk) {
+    double *M2 = chunk.array1;
+    double *M1 = chunk.array2;
+    long N = chunk.offset + chunk.count;
+    //printf("m2map over %p from %ld len %ld\n", array1, chunk.offset, chunk.count);
+    for (long j = chunk.offset; j < N; j++) {
+        M2[j] = fabs(M1[j] - M2[j]);
+    }
+}
+
+void InsertionSortChunk(Chunk_t chunk) {
+    long from = chunk.offset;
+    long to = chunk.offset + chunk.count;
+    double* M2 = chunk.array1;
+    long location;
+    double elem;
+    for (long p = from + 1; p < to; p++) {
+        elem = M2[p];
+        location = p - 1;
+        while (location >= from && M2[location] > elem) {
+            M2[location + 1] = M2[location];
+            location = location - 1;
+        }
+        M2[location + 1] = elem;
+    }
+}
+
+Chunk_t fullChunk(double *_array1, double *_array2, long size) {
+    Chunk_t chunk;
+    chunk.array1 = _array1;
+    chunk.array2 = _array2;
+    chunk.count = size;
+    chunk.offset = 0;
+    return chunk;
 }
 
 int main(int argc, char *argv[]) {
@@ -206,58 +242,26 @@ int main(int argc, char *argv[]) {
 
         /* Решить поставленную задачу, заполнить массив с результатами */
         //aka этап Map для M1
-
         multiThreadComputing(M1, NULL, N, 6, m1Map, NULL, 20);
-        /*Chunk_t chunk;
-        chunk.array = M1;
-        chunk.count = N;
-        chunk.offset = 0;
-        m1Map(chunk);*/
+        //m1Map(fullChunk(M1, NULL, N));
 
         //этап Map для M2
         multiThreadComputing(M2, M2_copy, M2_size, 6, m2Map, NULL, 20);
-        /*for (j = 0; j < M2_size; j++) {//Десятичный логарифм, возведенный в степень e
-            double sum = M2_copy[j]; //для нач элемента массива предыдущий элемент равен0
-            if (j > 0) {
-                sum += M2_copy[j - 1]; //каждый элемент поочерёдно сложить с предыдущим
-            }
-            M2[j] = pow(log10(sum), exp(1.0));
-        }*/
+        //m2Map(fullChunk(M2, M2_copy, M2_size));
 
         //этап Merge
-        for (j = 0; j < M2_size; j++) {//Модуль разности
-            M2[j] = fabs(M1[j] - M2[j]);
-        }
+        multiThreadComputing(M2, M1, M2_size, 6, Merge, NULL, 20);
+        //Merge(fullChunk(M2, M1, M2_size));
 
         /* Отсортировать массив с результатами указанным методом */
         //aka этап Sort
-
-
-/*#pragma omp parallel default(none) shared(M2, M2_size) num_threads(k)
-		{
-			const int num_threads = omp_get_num_threads(); //кол-во тредов выполняют секцию
-			const int chunk_size = M2_size / num_threads + 1; // размер куска для треда
-			const int cur_thread = omp_get_thread_num();//текущий номер треда
-			const int from = chunk_size * cur_thread;
-			const int to = MIN(chunk_size * (cur_thread + 1), M2_size);
-			long location;
-			double elem;
-			for (int p = from + 1; p < to; p++) {
-				elem = M2[p];
-				location = p - 1;
-				while (location >= from && M2[location] > elem) {
-					M2[location + 1] = M2[location];
-					location = location - 1;
-				}
-				M2[location + 1] = elem;
-			}
-		}
+        multiThreadComputing(M2, NULL, M2_size, 6, InsertionSortChunk, NULL, M2_size / 24);
 		//здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
 		//но сам массив еще нет. когда у нас массив частично сортирован, mergeSort - то что нужно
 		mergeSort(M2, 0, M2_size - 1);
-*/
 
-        long location;
+
+        /*long location;
         double elem;
         for (j = 1; j < M2_size; j++) {//Сортировка вставками (Insertion sort).
             elem = M2[j];
@@ -267,7 +271,7 @@ int main(int argc, char *argv[]) {
                 location = location - 1;
             }
             M2[location + 1] = elem;
-        }
+        }*/
 
 
         double minNotZero = DBL_MAX;
