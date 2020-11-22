@@ -207,7 +207,7 @@ int main(int argc, char *argv[]) {
         /* Решить поставленную задачу, заполнить массив с результатами */
         //aka этап Map для M1
 
-        multiThreadComputing(M1, NULL, N, 2, m1Map, NULL, 20);
+        multiThreadComputing(M1, NULL, N, 6, m1Map, NULL, 20);
         /*Chunk_t chunk;
         chunk.array = M1;
         chunk.count = N;
@@ -215,7 +215,7 @@ int main(int argc, char *argv[]) {
         m1Map(chunk);*/
 
         //этап Map для M2
-        multiThreadComputing(M2, M2_copy, M2_size, 2, m2Map, NULL, 20);
+        multiThreadComputing(M2, M2_copy, M2_size, 6, m2Map, NULL, 20);
         /*for (j = 0; j < M2_size; j++) {//Десятичный логарифм, возведенный в степень e
             double sum = M2_copy[j]; //для нач элемента массива предыдущий элемент равен0
             if (j > 0) {
@@ -223,16 +223,6 @@ int main(int argc, char *argv[]) {
             }
             M2[j] = pow(log10(sum), exp(1.0));
         }*/
-
-
-        for (j = 0; j < 5; j++) {// вывод первых 5 элементов
-            printf("M1[%d] = %.5f, ", j, M1[j]);
-        }
-        printf("\n");
-        for (j = 0; j < 5; j++) {// вывод первых 5 элементов
-            printf("M2[%d] = %.5f, ", j, M2[j]);
-        }
-        printf("\n");
 
         //этап Merge
         for (j = 0; j < M2_size; j++) {//Модуль разности
@@ -280,7 +270,7 @@ int main(int argc, char *argv[]) {
         }
 
 
-        double minNotZero = 0;
+        double minNotZero = DBL_MAX;
 //#pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
         for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
             if (M2[j] > 0 && M2[j] < minNotZero)
