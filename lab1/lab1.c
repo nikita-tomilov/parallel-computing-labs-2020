@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
             //которые при делении на минимальный ненулевой
             //элемент массива М2 дают чётное число
             if (((long) (M2[j] / minNotZero)) % 2 == 0)
-                X += sin(M2[i]);
+                X += sin(M2[j]);
         }
         printf("N=%d\t X=%.20f\n", i, X);
     }
