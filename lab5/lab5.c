@@ -4,16 +4,17 @@
 #include <stdlib.h>
 #include <math.h>
 #include <unistd.h>
-#include <assert.h>
 #include <float.h>
 #include <pthread.h>
 #include <sys/time.h>
 
 #define MIN(a, b) (((a)<(b))?(a):(b))
 
-#define SCHEDULE_STRING
-#define CONST_NUM_THREADS 4
+#define CONST_NUM_THREADS 6
+#define CONST_CHUNK_SIZE 20
 #define MAX_I 50
+
+#define WORK_PARALLEL
 
 void merge(double arr[], int l, int m, int r) {
     int n1 = m - l + 1;
@@ -92,8 +93,15 @@ long arrayLength;
 long currentOffset;
 long chunkSize;
 
-Chunk_t getNextChunk(int threadId) {
+double reductionResult;
+
+double (*reductionFunction)(double, double);
+
+Chunk_t getNextChunk(int threadId, double intermediateReductionResult) {
     pthread_mutex_lock(&mutex);
+    if (reductionFunction != NULL) {
+        reductionResult = (*reductionFunction)(reductionResult, intermediateReductionResult);
+    }
     Chunk_t ans;
     ans.array1 = array1;
     ans.array2 = array2;
@@ -112,17 +120,17 @@ Chunk_t getNextChunk(int threadId) {
 
 void threadFunc(void *args) {
     ThreadInfo_t info = *(ThreadInfo_t *) args;
-    Chunk_t chunk = getNextChunk(info.threadId);
-    void (*f)(Chunk_t);
+    Chunk_t chunk = getNextChunk(info.threadId, NAN);
+    double (*f)(Chunk_t);
     f = info.func;
     while (chunk.count > 0) {
-        f(chunk);
-        chunk = getNextChunk(info.threadId);
+        double intermediateRes = f(chunk);
+        chunk = getNextChunk(info.threadId, intermediateRes);
     }
 }
 
-void multiThreadComputing(double _array1[], double _array2[], long _arrayLength, int threadsNum, void *func,
-                          void *funcReduction, int _chunkSize) {
+void multiThreadComputingReduction(double _array1[], double _array2[], long _arrayLength, int threadsNum, void *func,
+                                   void *_reductionFunction, double reductionInitValue, int _chunkSize) {
     pthread_t *thread = (pthread_t *) malloc(threadsNum * sizeof(pthread_t)); //создаем потоки
     ThreadInfo_t *info = (ThreadInfo_t *) malloc(threadsNum * sizeof(ThreadInfo_t)); //создаем инфо
 
@@ -131,6 +139,8 @@ void multiThreadComputing(double _array1[], double _array2[], long _arrayLength,
     arrayLength = _arrayLength;
     chunkSize = _chunkSize;
     currentOffset = 0;
+    reductionResult = reductionInitValue;
+    reductionFunction = _reductionFunction;
 
     for (int j = 0; j < threadsNum; j++) {
         info[j].threadId = j + 1;
@@ -145,7 +155,13 @@ void multiThreadComputing(double _array1[], double _array2[], long _arrayLength,
     free(info);
 }
 
-void m1Map(Chunk_t chunk) {
+void multiThreadComputing(double _array1[], double _array2[], long _arrayLength, int threadsNum, void *func,
+                          int _chunkSize) {
+    multiThreadComputingReduction(_array1, _array2, _arrayLength, threadsNum, func,
+                                  NULL, NAN, _chunkSize);
+}
+
+void M1Map(Chunk_t chunk) {
     double *array = chunk.array1;
     long N = chunk.offset + chunk.count;
     //printf("m1map over %p from %ld len %ld\n", array1, chunk.offset, chunk.count);
@@ -154,7 +170,7 @@ void m1Map(Chunk_t chunk) {
     }
 }
 
-void m2Map(Chunk_t chunk) {
+void M2Map(Chunk_t chunk) {
     double *array = chunk.array1;
     double *array_copy = chunk.array2;
     long N = chunk.offset + chunk.count;
@@ -181,7 +197,7 @@ void Merge(Chunk_t chunk) {
 void InsertionSortChunk(Chunk_t chunk) {
     long from = chunk.offset;
     long to = chunk.offset + chunk.count;
-    double* M2 = chunk.array1;
+    double *M2 = chunk.array1;
     long location;
     double elem;
     for (long p = from + 1; p < to; p++) {
@@ -193,6 +209,40 @@ void InsertionSortChunk(Chunk_t chunk) {
         }
         M2[location + 1] = elem;
     }
+}
+
+double reductionMin(double a, double b) {
+    if (isnan(b)) return a;
+    return MIN(a, b);
+}
+
+double reductionSum(double a, double b) {
+    if (isnan(b)) return a;
+    return a + b;
+}
+
+double MinNotZero(Chunk_t chunk) {
+    double minNotZero = DBL_MAX;
+    double *M2 = chunk.array1;
+    long N = chunk.offset + chunk.count;
+    for (long j = chunk.offset; j < N; j++) { //ищим минимальный ненулевой элемент массива М2
+        if (M2[j] > 0 && M2[j] < minNotZero)
+            minNotZero = M2[j];
+    }
+    return minNotZero;
+}
+
+double SumOfSine(Chunk_t chunk) {
+    double X = 0;
+    double *M2 = chunk.array1;
+    double minNotZero = chunk.array2[0];
+    //printf("min not zero: %lf\n", minNotZero);
+    long N = chunk.offset + chunk.count;
+    for (long j = chunk.offset; j < N; j++) { //считаем сумму синусов
+        if (((long) (M2[j] / minNotZero)) % 2 == 0)
+            X += sin(M2[j]);
+    }
+    return X;
 }
 
 Chunk_t fullChunk(double *_array1, double *_array2, long size) {
@@ -214,12 +264,11 @@ int main(int argc, char *argv[]) {
     pthread_t thread;
     pthread_create(&thread, NULL, printPercent, &i);
 
-
     int j;
-    N = atoi(argv[1]); /* N равен первому параметру командной строки */
+    char *end;
+    N = (int) strtol(argv[1], &end, 10); /* N равен первому параметру командной строки */
     int M2_size = N / 2;
     double *M1 = (double *) malloc(N * sizeof(double));
-    printf("address M1 %p\n", (void *) M1);
     double *M2 = (double *) malloc(M2_size * sizeof(double));
     double *M2_copy = (double *) malloc((M2_size) * sizeof(double));
     unsigned int A = (unsigned int) 240;
@@ -241,54 +290,53 @@ int main(int argc, char *argv[]) {
         }
 
         /* Решить поставленную задачу, заполнить массив с результатами */
+#ifdef WORK_PARALLEL
         //aka этап Map для M1
-        multiThreadComputing(M1, NULL, N, 6, m1Map, NULL, 20);
-        //m1Map(fullChunk(M1, NULL, N));
-
+        multiThreadComputing(M1, NULL, N, CONST_NUM_THREADS, M1Map, CONST_CHUNK_SIZE);
         //этап Map для M2
-        multiThreadComputing(M2, M2_copy, M2_size, 6, m2Map, NULL, 20);
-        //m2Map(fullChunk(M2, M2_copy, M2_size));
+        multiThreadComputing(M2, M2_copy, M2_size, CONST_NUM_THREADS, M2Map, CONST_CHUNK_SIZE);
+#else
+        M1Map(fullChunk(M1, NULL, N));
+        M2Map(fullChunk(M2, M2_copy, M2_size));
+#endif
 
         //этап Merge
-        multiThreadComputing(M2, M1, M2_size, 6, Merge, NULL, 20);
-        //Merge(fullChunk(M2, M1, M2_size));
+#ifdef WORK_PARALLEL
+        multiThreadComputing(M2, M1, M2_size, CONST_NUM_THREADS, Merge, CONST_CHUNK_SIZE);
+#else
+        Merge(fullChunk(M2, M1, M2_size));
+#endif
 
         /* Отсортировать массив с результатами указанным методом */
         //aka этап Sort
-        multiThreadComputing(M2, NULL, M2_size, 6, InsertionSortChunk, NULL, M2_size / 24);
-		//здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
-		//но сам массив еще нет. когда у нас массив частично сортирован, mergeSort - то что нужно
-		mergeSort(M2, 0, M2_size - 1);
+#ifdef WORK_PARALLEL
+        multiThreadComputing(M2, NULL, M2_size, CONST_NUM_THREADS, InsertionSortChunk, M2_size / 24);
+        //здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
+        //но сам массив еще нет. когда у нас массив частично сортирован, mergeSort - то что нужно
+        mergeSort(M2, 0, M2_size - 1);
+#else
+        InsertionSortChunk(fullChunk(M2, M1, M2_size));
+#endif
 
+        /* Найти минимальный ненулевой элемент массива */
+        //aka Reduce-1
+#ifdef WORK_PARALLEL
+        multiThreadComputingReduction(M2, NULL, M2_size, CONST_NUM_THREADS, MinNotZero, reductionMin, DBL_MAX, CONST_CHUNK_SIZE);
+        double minNotZero = reductionResult;
+#else
+        double minNotZero = MinNotZero(fullChunk(M2, NULL, M2_size));
+#endif
 
-        /*long location;
-        double elem;
-        for (j = 1; j < M2_size; j++) {//Сортировка вставками (Insertion sort).
-            elem = M2[j];
-            location = j - 1;
-            while (location >= 0 && M2[location] > elem) {
-                M2[location + 1] = M2[location];
-                location = location - 1;
-            }
-            M2[location + 1] = elem;
-        }*/
-
-
-        double minNotZero = DBL_MAX;
-//#pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
-        for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
-            if (M2[j] > 0 && M2[j] < minNotZero)
-                minNotZero = M2[j];
-        }
-
-        double X = 0;
-//#pragma omp parallel for default(none) shared(M2, M2_size, minNotZero, i) reduction(+:X) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
-        for (j = 0; j < M2_size; j++) {//Рассчитать сумму синусов тех элементов массиваМ2,
-            //которые при делении на минимальный ненулевой
-            //элемент массива М2 дают чётное число
-            if (((long) (M2[j] / minNotZero)) % 2 == 0)
-                X += sin(M2[i]);
-        }
+        /*Рассчитать сумму синусов тех элементов массива М2,
+          которые при делении на минимальный ненулевой
+          элемент массива М2 дают чётное число*/
+        //aka Reduce-2
+#ifdef WORK_PARALLEL
+        multiThreadComputingReduction(M2, &minNotZero, M2_size, CONST_NUM_THREADS, SumOfSine, reductionSum, 0, CONST_CHUNK_SIZE);
+        double X = reductionResult;
+#else
+        double X = SumOfSine(fullChunk(M2, &minNotZero, M2_size));
+#endif
         printf("N=%d\t X=%.20f\n", i, X);
     }
     free(M1);
