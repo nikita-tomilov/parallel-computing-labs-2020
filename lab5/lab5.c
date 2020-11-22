@@ -9,12 +9,11 @@
 #include <sys/time.h>
 
 #define MIN(a, b) (((a)<(b))?(a):(b))
-
-#define CONST_NUM_THREADS 6
-#define CONST_CHUNK_SIZE 20
 #define MAX_I 50
 
-#define WORK_PARALLEL
+int NUM_THREADS = 6;
+int CHUNK_SIZE = 20;
+int WORK_PARALLEL = 1;
 
 void merge(double arr[], int l, int m, int r) {
     int n1 = m - l + 1;
@@ -255,6 +254,10 @@ Chunk_t fullChunk(double *_array1, double *_array2, long size) {
 }
 
 int main(int argc, char *argv[]) {
+    if ((argc < 2) || (argc > 5)) {
+        printf("usage: %s N [ thread_count [ chunk_size ] ]\n", argv[0]);
+        return -1;
+    }
     int i = 0;
     long delta_ms;
     int N;
@@ -273,6 +276,18 @@ int main(int argc, char *argv[]) {
     double *M2_copy = (double *) malloc((M2_size) * sizeof(double));
     unsigned int A = (unsigned int) 240;
 
+    if (argc > 2) {
+        NUM_THREADS = (int) strtol(argv[2], &end, 10);
+        if (NUM_THREADS == 0) {
+            WORK_PARALLEL = 0;
+        } else {
+            if (argc > 3) {
+                CHUNK_SIZE = (int) strtol(argv[3], &end, 10);
+            }
+        }
+    }
+
+    printf("mode: Parallel=%d, NumThreads=%d, ChunkSize=%d\n", WORK_PARALLEL, NUM_THREADS, CHUNK_SIZE);
 
     for (i = 0; i < MAX_I; i++) /* 50 экспериментов */
     {
@@ -290,53 +305,57 @@ int main(int argc, char *argv[]) {
         }
 
         /* Решить поставленную задачу, заполнить массив с результатами */
-#ifdef WORK_PARALLEL
-        //aka этап Map для M1
-        multiThreadComputing(M1, NULL, N, CONST_NUM_THREADS, M1Map, CONST_CHUNK_SIZE);
-        //этап Map для M2
-        multiThreadComputing(M2, M2_copy, M2_size, CONST_NUM_THREADS, M2Map, CONST_CHUNK_SIZE);
-#else
-        M1Map(fullChunk(M1, NULL, N));
-        M2Map(fullChunk(M2, M2_copy, M2_size));
-#endif
+        if (WORK_PARALLEL) {
+            //aka этап Map для M1
+            multiThreadComputing(M1, NULL, N, NUM_THREADS, M1Map, CHUNK_SIZE);
+            //этап Map для M2
+            multiThreadComputing(M2, M2_copy, M2_size, NUM_THREADS, M2Map, CHUNK_SIZE);
+        } else {
+            M1Map(fullChunk(M1, NULL, N));
+            M2Map(fullChunk(M2, M2_copy, M2_size));
+        }
 
         //этап Merge
-#ifdef WORK_PARALLEL
-        multiThreadComputing(M2, M1, M2_size, CONST_NUM_THREADS, Merge, CONST_CHUNK_SIZE);
-#else
-        Merge(fullChunk(M2, M1, M2_size));
-#endif
+        if (WORK_PARALLEL) {
+            multiThreadComputing(M2, M1, M2_size, NUM_THREADS, Merge, CHUNK_SIZE);
+        } else {
+            Merge(fullChunk(M2, M1, M2_size));
+        }
 
         /* Отсортировать массив с результатами указанным методом */
         //aka этап Sort
-#ifdef WORK_PARALLEL
-        multiThreadComputing(M2, NULL, M2_size, CONST_NUM_THREADS, InsertionSortChunk, M2_size / 24);
-        //здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
-        //но сам массив еще нет. когда у нас массив частично сортирован, mergeSort - то что нужно
-        mergeSort(M2, 0, M2_size - 1);
-#else
-        InsertionSortChunk(fullChunk(M2, M1, M2_size));
-#endif
+        if (WORK_PARALLEL) {
+            multiThreadComputing(M2, NULL, M2_size, NUM_THREADS, InsertionSortChunk, M2_size / 24);
+            //здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
+            //но сам массив еще нет. когда у нас массив частично сортирован, mergeSort - то что нужно
+            mergeSort(M2, 0, M2_size - 1);
+        } else {
+            InsertionSortChunk(fullChunk(M2, M1, M2_size));
+        }
 
         /* Найти минимальный ненулевой элемент массива */
         //aka Reduce-1
-#ifdef WORK_PARALLEL
-        multiThreadComputingReduction(M2, NULL, M2_size, CONST_NUM_THREADS, MinNotZero, reductionMin, DBL_MAX, CONST_CHUNK_SIZE);
-        double minNotZero = reductionResult;
-#else
-        double minNotZero = MinNotZero(fullChunk(M2, NULL, M2_size));
-#endif
+        double minNotZero = DBL_MAX;
+        if (WORK_PARALLEL) {
+            multiThreadComputingReduction(M2, NULL, M2_size, NUM_THREADS, MinNotZero, reductionMin, DBL_MAX,
+                                          CHUNK_SIZE);
+            minNotZero = reductionResult;
+        } else {
+            minNotZero = MinNotZero(fullChunk(M2, NULL, M2_size));
+        }
 
         /*Рассчитать сумму синусов тех элементов массива М2,
           которые при делении на минимальный ненулевой
           элемент массива М2 дают чётное число*/
         //aka Reduce-2
-#ifdef WORK_PARALLEL
-        multiThreadComputingReduction(M2, &minNotZero, M2_size, CONST_NUM_THREADS, SumOfSine, reductionSum, 0, CONST_CHUNK_SIZE);
-        double X = reductionResult;
-#else
-        double X = SumOfSine(fullChunk(M2, &minNotZero, M2_size));
-#endif
+        double X;
+        if (WORK_PARALLEL) {
+            multiThreadComputingReduction(M2, &minNotZero, M2_size, NUM_THREADS, SumOfSine, reductionSum, 0,
+                                          CHUNK_SIZE);
+            X = reductionResult;
+        } else {
+            X = SumOfSine(fullChunk(M2, &minNotZero, M2_size));
+        }
         printf("N=%d\t X=%.20f\n", i, X);
     }
     free(M1);
