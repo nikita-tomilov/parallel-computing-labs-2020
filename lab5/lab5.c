@@ -13,7 +13,7 @@
 
 #define SCHEDULE_STRING
 #define CONST_NUM_THREADS 4
-#define MAX_I 1
+#define MAX_I 50
 
 void merge(double arr[], int l, int m, int r) {
     int n1 = m - l + 1;
@@ -75,6 +75,7 @@ void *printPercent(void *i) {
 
 typedef struct {
     double *array;
+    double *arrayCopy;
     long offset;
     long count;
 } Chunk_t;
@@ -86,6 +87,7 @@ typedef struct {
 
 pthread_mutex_t mutex;
 double *arrayForProcessing;
+double *arrayCopy;
 long arrayLength;
 long currentOffset;
 long chunkSize;
@@ -94,6 +96,7 @@ Chunk_t getNextChunk(int threadId) {
     pthread_mutex_lock(&mutex);
     Chunk_t ans;
     ans.array = arrayForProcessing;
+    ans.arrayCopy = arrayCopy;
     if (currentOffset >= arrayLength) {
         ans.count = 0;
         ans.offset = 0;
@@ -102,7 +105,7 @@ Chunk_t getNextChunk(int threadId) {
         ans.count = MIN(chunkSize, arrayLength - currentOffset);
     }
     currentOffset = currentOffset + chunkSize;
-    printf("thread %d requested next chunk, i said from %ld with size %ld\n", threadId, ans.offset, ans.count);
+    //printf("thread %d requested next chunk, i said from %ld with size %ld\n", threadId, ans.offset, ans.count);
     pthread_mutex_unlock(&mutex);
     return ans;
 }
@@ -118,14 +121,16 @@ void threadFunc(void *args) {
     }
 }
 
-void multiThreadComputing(double _array[], long _arrayLength, int threadsNum, void *func, void *funcReduction,
-                          int _chunkSize) {
+void multiThreadComputing(double _array[], double _arrayCopy[], long _arrayLength, int threadsNum, void *func,
+                          void *funcReduction, int _chunkSize) {
     pthread_t *thread = (pthread_t *) malloc(threadsNum * sizeof(pthread_t)); //создаем потоки
     ThreadInfo_t *info = (ThreadInfo_t *) malloc(threadsNum * sizeof(ThreadInfo_t)); //создаем инфо
 
     arrayForProcessing = _array;
+    arrayCopy = _arrayCopy;
     arrayLength = _arrayLength;
     chunkSize = _chunkSize;
+    currentOffset = 0;
 
     for (int j = 0; j < threadsNum; j++) {
         info[j].threadId = j + 1;
@@ -143,9 +148,23 @@ void multiThreadComputing(double _array[], long _arrayLength, int threadsNum, vo
 void m1Map(Chunk_t chunk) {
     double *array = chunk.array;
     long N = chunk.offset + chunk.count;
-    printf("m1map over %p from %ld len %ld\n", array, chunk.offset, chunk.count);
+    //printf("m1map over %p from %ld len %ld\n", array, chunk.offset, chunk.count);
     for (long j = chunk.offset; j < N; j++) {//Кубический корень после деления на число e
         array[j] = pow((double) (array[j] / exp(1.0)), 1.0 / 3.0);
+    }
+}
+
+void m2Map(Chunk_t chunk) {
+    double *array = chunk.array;
+    double *array_copy = chunk.arrayCopy;
+    long N = chunk.offset + chunk.count;
+    //printf("m2map over %p from %ld len %ld\n", array, chunk.offset, chunk.count);
+    for (long j = chunk.offset; j < N; j++) {
+        double sum = array_copy[j]; //для нач элемента массива предыдущий элемент равен0
+        if (j > 0) {
+            sum += array_copy[j - 1]; //каждый элемент поочерёдно сложить с предыдущим
+        }
+        array[j] = pow(log10(sum), exp(1.0));
     }
 }
 
@@ -185,25 +204,18 @@ int main(int argc, char *argv[]) {
             M2_copy[j] = rand;
         }
 
-        //multiThreadComputing(2, M1, N, printHello, NULL, 20);
-
         /* Решить поставленную задачу, заполнить массив с результатами */
         //aka этап Map для M1
 
-        multiThreadComputing(M1, N, 2, m1Map, NULL, 20);
+        multiThreadComputing(M1, NULL, N, 2, m1Map, NULL, 20);
         /*Chunk_t chunk;
         chunk.array = M1;
         chunk.count = N;
         chunk.offset = 0;
         m1Map(chunk);*/
 
-        printf("print M1\n");
-        for (j = 0; j < N; j++) {//Кубический корень после деления на число e
-            printf("%d - %f\n", j, M1[j]);
-        }
-
         //этап Map для M2
-        //multiThreadComputing(1, M2_copy, M2_size, m2Map, NULL, 20);
+        multiThreadComputing(M2, M2_copy, M2_size, 2, m2Map, NULL, 20);
         /*for (j = 0; j < M2_size; j++) {//Десятичный логарифм, возведенный в степень e
             double sum = M2_copy[j]; //для нач элемента массива предыдущий элемент равен0
             if (j > 0) {
@@ -211,6 +223,16 @@ int main(int argc, char *argv[]) {
             }
             M2[j] = pow(log10(sum), exp(1.0));
         }*/
+
+
+        for (j = 0; j < 5; j++) {// вывод первых 5 элементов
+            printf("M1[%d] = %.5f, ", j, M1[j]);
+        }
+        printf("\n");
+        for (j = 0; j < 5; j++) {// вывод первых 5 элементов
+            printf("M2[%d] = %.5f, ", j, M2[j]);
+        }
+        printf("\n");
 
         //этап Merge
         for (j = 0; j < M2_size; j++) {//Модуль разности
@@ -273,7 +295,7 @@ int main(int argc, char *argv[]) {
             if (((long) (M2[j] / minNotZero)) % 2 == 0)
                 X += sin(M2[i]);
         }
-        //printf("N=%d\t X=%.20f\n", i, X);
+        printf("N=%d\t X=%.20f\n", i, X);
     }
     free(M1);
     free(M2);
