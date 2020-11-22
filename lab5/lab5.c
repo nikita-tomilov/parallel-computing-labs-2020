@@ -13,7 +13,7 @@
 
 #define SCHEDULE_STRING
 #define CONST_NUM_THREADS 4
-#define MAX_I 10
+#define MAX_I 1
 
 void merge(double arr[], int l, int m, int r) {
     int n1 = m - l + 1;
@@ -93,7 +93,6 @@ pthread_t* firstFreedThread(pthread_t *threads, int threadsNum){
 };
 
 void multiThreadComputing(int threadsNum, double array[], long arrayLenght, void* func, void* funcReduction, int chunkSize){
-	//printf("hear 0\n");
 	pthread_t *thread = (pthread_t *) malloc(threadsNum * sizeof(pthread_t));//создаем потоки
 	int chunks = arrayLenght / chunkSize;//вычисляем кол-во кусков
 	chunks -= 1;//последний кусок может быть меньше указаного размера
@@ -109,27 +108,22 @@ void multiThreadComputing(int threadsNum, double array[], long arrayLenght, void
 		pthread_t *threadFreed = firstFreedThread(thread, threadsNum);
 		pthread_create(threadFreed, NULL, func, &argsArray[i]);
 	}
-	//printf("hear 3\n");
-	//считаем огрызок
-	struct arg_struct* stubArgs = malloc(sizeof(struct arg_struct));
-	stubArgs->arrayLenght = arrayLenght % chunkSize;
-	stubArgs->array = &array[chunks * chunkSize];
-	pthread_t *threadFreed = firstFreedThread(thread, threadsNum);
-	pthread_create(threadFreed, NULL, (void*)func, stubArgs);
-
-	//printf("hear 4\n");
-	for(int i = 0 ; i < threadsNum ; i++){
-		//printf("hear 5\n");
-		pthread_join(thread[i], NULL);
-		//printf("%d\n",res); 
+	//считаем огрызок если есть
+	if(arrayLenght % chunkSize > 0){
+		struct arg_struct* stubArgs = malloc(sizeof(struct arg_struct));
+		stubArgs->arrayLenght = arrayLenght % chunkSize;
+		stubArgs->array = &array[chunks * chunkSize];
+		pthread_t *threadFreed = firstFreedThread(thread, threadsNum);
+		pthread_create(threadFreed, NULL, (void*)func, stubArgs);
+		pthread_join(*threadFreed, NULL);
+		free(stubArgs);
 	}
-	//printf("hear 6\n");
+
+	for(int i = 0 ; i < threadsNum ; i++){
+		pthread_join(thread[i], NULL);
+	}
 	free(thread);
-	//printf("hear 7\n");
 	free(argsArray);
-	//printf("hear 8\n");
-	free(stubArgs);
-	//printf("hear 9\n");
 }
 
 void m1Map(struct arg_struct *args){
