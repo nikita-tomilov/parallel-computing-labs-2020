@@ -253,6 +253,19 @@ Chunk_t fullChunk(double *_array1, double *_array2, long size) {
     return chunk;
 }
 
+struct timeval Tstart, Tcur;
+
+void time_meas_start() {
+    gettimeofday(&Tstart, NULL);
+}
+
+long get_time_us() {
+    gettimeofday(&Tcur, NULL);
+    long ans = 1000000 * (Tcur.tv_sec - Tstart.tv_sec) + (Tcur.tv_usec - Tstart.tv_usec);
+    time_meas_start();
+    return ans;
+}
+
 int main(int argc, char *argv[]) {
     if ((argc < 2) || (argc > 5)) {
         printf("usage: %s N [ thread_count [ chunk_size ] ]\n", argv[0]);
@@ -260,13 +273,14 @@ int main(int argc, char *argv[]) {
     }
     int i = 0;
     long delta_ms;
-	long delta_map_stage_ms = 0;
-	long delta_merge_stage_ms = 0;
-	long delta_sort_stage_ms = 0;
-	long delta_reduce_stage_ms = 0;
+    long delta_generate_stage_us = 0;
+    long delta_map_stage_us = 0;
+    long delta_merge_stage_us = 0;
+    long delta_sort_stage_us = 0;
+    long delta_reduce_stage_us = 0;
     int N;
 
-    struct timeval T1, T2, T3, T4;
+    struct timeval T1, T2;
     gettimeofday(&T1, NULL); /* запомнить текущее время T1 */
     pthread_t thread;
     pthread_create(&thread, NULL, printPercent, &i);
@@ -291,13 +305,15 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("mode: Parallel=%d, NumThreads=%d, ChunkSize=%d\n", WORK_PARALLEL, NUM_THREADS, CHUNK_SIZE);
+    printf("mode Parallel=%d, NumThreads=%d, ChunkSize=%d\n", WORK_PARALLEL, NUM_THREADS, CHUNK_SIZE);
 
     for (i = 0; i < MAX_I; i++) /* 50 экспериментов */
     {
         /* Заполнить массив исходных данных размером N */
         //aka Этап Generate
+        //TODO: parallel
         unsigned int seed = i;
+        time_meas_start();
         for (j = 0; j < N; j++) {// генерим М1
             M1[j] = custom_rand(1.0, A, &seed);
         }
@@ -308,8 +324,9 @@ int main(int argc, char *argv[]) {
             M2_copy[j] = rand;
         }
 
+        delta_generate_stage_us += get_time_us();
+
         /* Решить поставленную задачу, заполнить массив с результатами */
-		gettimeofday(&T3, NULL);
         if (WORK_PARALLEL) {
             //aka этап Map для M1
             multiThreadComputing(M1, NULL, N, NUM_THREADS, M1Map, CHUNK_SIZE);
@@ -319,23 +336,20 @@ int main(int argc, char *argv[]) {
             M1Map(fullChunk(M1, NULL, N));
             M2Map(fullChunk(M2, M2_copy, M2_size));
         }
-		gettimeofday(&T4, NULL);
-		delta_map_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
-		
 
-		gettimeofday(&T3, NULL);
+        delta_map_stage_us += get_time_us();
+
         //этап Merge
         if (WORK_PARALLEL) {
             multiThreadComputing(M2, M1, M2_size, NUM_THREADS, Merge, CHUNK_SIZE);
         } else {
             Merge(fullChunk(M2, M1, M2_size));
         }
-		gettimeofday(&T4, NULL);
-		delta_merge_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
+
+        delta_merge_stage_us += get_time_us();
 
         /* Отсортировать массив с результатами указанным методом */
         //aka этап Sort
-		gettimeofday(&T3, NULL);
         if (WORK_PARALLEL) {
             multiThreadComputing(M2, NULL, M2_size, NUM_THREADS, InsertionSortChunk, M2_size / 24);
             //здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
@@ -344,12 +358,11 @@ int main(int argc, char *argv[]) {
         } else {
             InsertionSortChunk(fullChunk(M2, M1, M2_size));
         }
-		gettimeofday(&T4, NULL);
-		delta_sort_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
+
+        delta_sort_stage_us += get_time_us();
 
         /* Найти минимальный ненулевой элемент массива */
         //aka Reduce-1
-		gettimeofday(&T3, NULL);
         double minNotZero = DBL_MAX;
         if (WORK_PARALLEL) {
             multiThreadComputingReduction(M2, NULL, M2_size, NUM_THREADS, MinNotZero, reductionMin, DBL_MAX,
@@ -371,8 +384,7 @@ int main(int argc, char *argv[]) {
         } else {
             X = SumOfSine(fullChunk(M2, &minNotZero, M2_size));
         }
-		gettimeofday(&T4, NULL);
-		delta_reduce_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
+        delta_reduce_stage_us += get_time_us();
         printf("N=%d\t X=%.20f\n", i, X);
     }
     free(M1);
@@ -386,9 +398,10 @@ int main(int argc, char *argv[]) {
 
     printf("100%% completed\n");
     printf("\nN=%d. Milliseconds passed: %ld\n", N, delta_ms); /* T2 - T1 */
-    printf("Map:%ld\n", delta_map_stage_ms);
-    printf("Merge:%ld\n", delta_merge_stage_ms);
-    printf("Sort:%ld\n", delta_sort_stage_ms);
-    printf("reduce:%ld\n", delta_reduce_stage_ms);
+    printf("Generate:%ld\n", delta_generate_stage_us);
+    printf("Map:%ld\n", delta_map_stage_us);
+    printf("Merge:%ld\n", delta_merge_stage_us);
+    printf("Sort:%ld\n", delta_sort_stage_us);
+    printf("Reduce:%ld\n", delta_reduce_stage_us);
     return 0;
 }
