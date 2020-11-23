@@ -226,7 +226,7 @@ int main(int argc, char *argv[]) {
                     //которые при делении на минимальный ненулевой
                     //элемент массива М2 дают чётное число
                     if (((long) (M2[j] / minNotZero)) % 2 == 0)
-                        X += sin(M2[i]);
+                        X += sin(M2[j]);
                 }
 				gettimeofday(&T4, NULL);
 				delta_reduce_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
