@@ -12,7 +12,7 @@
 #define MAX_I 50
 
 int NUM_THREADS = 4;
-int CHUNK_SIZE = 20;
+int CHUNK_SIZE = 40;
 int WORK_PARALLEL = 1;
 
 void merge(double arr[], int l, int m, int r) {
