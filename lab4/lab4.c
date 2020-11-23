@@ -12,6 +12,7 @@
 #define MAX_I 50
 
 #include <sys/time.h>
+#include <pthread.h>
 
 #ifdef _OPENMP
 
@@ -113,6 +114,8 @@ int main(int argc, char *argv[]) {
 	long delta_sort_stage_us = 0;
 	long delta_reduce_stage_us = 0;
     int N;
+    pthread_t thread;
+    pthread_create(&thread, NULL, printPercent, &i);
 #ifdef _OPENMP
     double start = omp_get_wtime();
     omp_set_nested(1);
@@ -121,8 +124,6 @@ int main(int argc, char *argv[]) {
 #else
             struct timeval T1, T2;
             gettimeofday(&T1, NULL); /* запомнить текущее время T1 */
-            pthread_t thread;
-            pthread_create(&thread, NULL, printPercent, &i);
 #endif
 
             int j;
