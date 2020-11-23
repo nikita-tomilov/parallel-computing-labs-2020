@@ -266,6 +266,29 @@ long get_time_us() {
     return ans;
 }
 
+unsigned int gSeed;
+
+double gA;
+
+void GenerateM1(Chunk_t chunk) {
+    long N = chunk.offset + chunk.count;
+    double* M1 = chunk.array1;
+    for (long j = chunk.offset; j < N; j++) { //ищим минимальный ненулевой элемент массива М2
+        M1[j] = custom_rand(1.0, gA, &gSeed);
+    }
+}
+
+void GenerateM2(Chunk_t chunk) {
+    long N = chunk.offset + chunk.count;
+    double* M2 = chunk.array1;
+    double* M2_copy = chunk.array2;
+    for (long j = chunk.offset; j < N; j++) { //ищим минимальный ненулевой элемент массива М2
+        double rand = custom_rand(gA, 10.0 * gA, &gSeed);
+        M2[j] = rand;
+        M2_copy[j] = rand;
+    }
+}
+
 int main(int argc, char *argv[]) {
     if ((argc < 2) || (argc > 5)) {
         printf("usage: %s N [ thread_count [ chunk_size ] ]\n", argv[0]);
@@ -280,12 +303,13 @@ int main(int argc, char *argv[]) {
     long delta_reduce_stage_us = 0;
     int N;
 
+    pthread_mutex_init(&mutex, NULL);
+
     struct timeval T1, T2;
     gettimeofday(&T1, NULL); /* запомнить текущее время T1 */
     pthread_t thread;
     pthread_create(&thread, NULL, printPercent, &i);
 
-    int j;
     char *end;
     N = (int) strtol(argv[1], &end, 10); /* N равен первому параметру командной строки */
     int M2_size = N / 2;
@@ -311,17 +335,16 @@ int main(int argc, char *argv[]) {
     {
         /* Заполнить массив исходных данных размером N */
         //aka Этап Generate
-        //TODO: parallel
-        unsigned int seed = i;
         time_meas_start();
-        for (j = 0; j < N; j++) {// генерим М1
-            M1[j] = custom_rand(1.0, A, &seed);
-        }
-
-        for (j = 0; j < M2_size; j++) {// генерим М2 и его копию
-            double rand = custom_rand(A, 10.0 * A, &seed);
-            M2[j] = rand;
-            M2_copy[j] = rand;
+        gA = A;
+        gSeed = i;
+        //Параллельная версия Generate будет не совпадать с ЛР1, т к порядок вызова rand_r неизвестен заранее
+        if (WORK_PARALLEL) {
+            multiThreadComputing(M1, NULL, N, NUM_THREADS, GenerateM1, CHUNK_SIZE);
+            multiThreadComputing(M2, M2_copy, M2_size, NUM_THREADS, GenerateM2, CHUNK_SIZE);
+        } else {
+            GenerateM1(fullChunk(M1, NULL, N));
+            GenerateM2(fullChunk(M2, M2_copy, M2_size));
         }
 
         delta_generate_stage_us += get_time_us();
@@ -403,5 +426,7 @@ int main(int argc, char *argv[]) {
     printf("Merge:%ld\n", delta_merge_stage_us);
     printf("Sort:%ld\n", delta_sort_stage_us);
     printf("Reduce:%ld\n", delta_reduce_stage_us);
+
+    pthread_mutex_destroy(&mutex);
     return 0;
 }
