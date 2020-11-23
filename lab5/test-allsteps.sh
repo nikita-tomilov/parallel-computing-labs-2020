@@ -5,7 +5,7 @@ rm -rf logs-*
 run() {
   M=$1
   for N in $(seq 1200 3380 35000); do
-    ./lab5 $N $M | grep ':' | tee -a logs-$M.txt
+    ./lab5 $N $M 150 | grep ':' | tee -a logs-$M.txt
   done
 }
 
