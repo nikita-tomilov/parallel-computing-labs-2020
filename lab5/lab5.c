@@ -12,7 +12,7 @@
 #define MAX_I 50
 
 int NUM_THREADS = 4;
-int CHUNK_SIZE = 40;
+int CHUNK_SIZE = 20;
 int WORK_PARALLEL = 1;
 
 void merge(double arr[], int l, int m, int r) {
@@ -374,7 +374,7 @@ int main(int argc, char *argv[]) {
         /* Отсортировать массив с результатами указанным методом */
         //aka этап Sort
         if (WORK_PARALLEL) {
-            multiThreadComputing(M2, NULL, M2_size, NUM_THREADS, InsertionSortChunk, M2_size / 24);
+            multiThreadComputing(M2, NULL, M2_size, NUM_THREADS, InsertionSortChunk, (int)CHUNK_SIZE);
             //здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
             //но сам массив еще нет. когда у нас массив частично сортирован, mergeSort - то что нужно
             mergeSort(M2, 0, M2_size - 1);
