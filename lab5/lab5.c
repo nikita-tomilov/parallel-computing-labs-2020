@@ -11,7 +11,7 @@
 #define MIN(a, b) (((a)<(b))?(a):(b))
 #define MAX_I 50
 
-int NUM_THREADS = 6;
+int NUM_THREADS = 4;
 int CHUNK_SIZE = 20;
 int WORK_PARALLEL = 1;
 
@@ -260,9 +260,13 @@ int main(int argc, char *argv[]) {
     }
     int i = 0;
     long delta_ms;
+	long delta_map_stage_ms = 0;
+	long delta_merge_stage_ms = 0;
+	long delta_sort_stage_ms = 0;
+	long delta_reduce_stage_ms = 0;
     int N;
 
-    struct timeval T1, T2;
+    struct timeval T1, T2, T3, T4;
     gettimeofday(&T1, NULL); /* запомнить текущее время T1 */
     pthread_t thread;
     pthread_create(&thread, NULL, printPercent, &i);
@@ -305,6 +309,7 @@ int main(int argc, char *argv[]) {
         }
 
         /* Решить поставленную задачу, заполнить массив с результатами */
+		gettimeofday(&T3, NULL);
         if (WORK_PARALLEL) {
             //aka этап Map для M1
             multiThreadComputing(M1, NULL, N, NUM_THREADS, M1Map, CHUNK_SIZE);
@@ -314,16 +319,23 @@ int main(int argc, char *argv[]) {
             M1Map(fullChunk(M1, NULL, N));
             M2Map(fullChunk(M2, M2_copy, M2_size));
         }
+		gettimeofday(&T4, NULL);
+		delta_map_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
+		
 
+		gettimeofday(&T3, NULL);
         //этап Merge
         if (WORK_PARALLEL) {
             multiThreadComputing(M2, M1, M2_size, NUM_THREADS, Merge, CHUNK_SIZE);
         } else {
             Merge(fullChunk(M2, M1, M2_size));
         }
+		gettimeofday(&T4, NULL);
+		delta_merge_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
 
         /* Отсортировать массив с результатами указанным методом */
         //aka этап Sort
+		gettimeofday(&T3, NULL);
         if (WORK_PARALLEL) {
             multiThreadComputing(M2, NULL, M2_size, NUM_THREADS, InsertionSortChunk, M2_size / 24);
             //здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
@@ -332,9 +344,12 @@ int main(int argc, char *argv[]) {
         } else {
             InsertionSortChunk(fullChunk(M2, M1, M2_size));
         }
+		gettimeofday(&T4, NULL);
+		delta_sort_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
 
         /* Найти минимальный ненулевой элемент массива */
         //aka Reduce-1
+		gettimeofday(&T3, NULL);
         double minNotZero = DBL_MAX;
         if (WORK_PARALLEL) {
             multiThreadComputingReduction(M2, NULL, M2_size, NUM_THREADS, MinNotZero, reductionMin, DBL_MAX,
@@ -356,6 +371,8 @@ int main(int argc, char *argv[]) {
         } else {
             X = SumOfSine(fullChunk(M2, &minNotZero, M2_size));
         }
+		gettimeofday(&T4, NULL);
+		delta_reduce_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
         printf("N=%d\t X=%.20f\n", i, X);
     }
     free(M1);
@@ -369,5 +386,9 @@ int main(int argc, char *argv[]) {
 
     printf("100%% completed\n");
     printf("\nN=%d. Milliseconds passed: %ld\n", N, delta_ms); /* T2 - T1 */
+    printf("Map:%ld\n", delta_map_stage_ms);
+    printf("Merge:%ld\n", delta_merge_stage_ms);
+    printf("Sort:%ld\n", delta_sort_stage_ms);
+    printf("reduce:%ld\n", delta_reduce_stage_ms);
     return 0;
 }

@@ -94,17 +94,16 @@ void *printPercent(void *i) {
 int main(int argc, char *argv[]) {
     int i = 0;
     long delta_ms;
+	long delta_map_stage_ms = 0;
+	long delta_merge_stage_ms = 0;
+	long delta_sort_stage_ms = 0;
+	long delta_reduce_stage_ms = 0;
+	struct timeval T3, T4;
     int N;
 #ifdef _OPENMP
     double start = omp_get_wtime();
     omp_set_nested(1);
-#pragma omp parallel sections default(none) shared(i, argv, N, delta_ms, start)
-    {
-#pragma omp section
-        {
-            printPercent(&i);
-        }
-#pragma omp section
+
         {
 #else
             struct timeval T1, T2;
@@ -139,6 +138,7 @@ int main(int argc, char *argv[]) {
 
                 /* Решить поставленную задачу, заполнить массив с результатами */
                 //aka этап Map для M1
+				gettimeofday(&T3, NULL);
 #pragma omp parallel for default(none) shared(M1, N) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
                 for (j = 0; j < N; j++) {//Кубический корень после деления на число e
                     M1[j] = pow((double) (M1[j] / exp(1.0)), 1.0 / 3.0);
@@ -153,16 +153,23 @@ int main(int argc, char *argv[]) {
                     }
                     M2[j] = pow(log10(sum), exp(1.0));
                 }
-
+				gettimeofday(&T4, NULL);
+				delta_map_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
+				
+				gettimeofday(&T3, NULL);
                 //этап Merge
 #pragma omp parallel for default(none) shared(M1, M2, M2_size) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
                 for (j = 0; j < M2_size; j++) {//Модуль разности
                     M2[j] = fabs(M1[j] - M2[j]);
                 }
+				
+				gettimeofday(&T4, NULL);
+				delta_merge_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
 
                 /* Отсортировать массив с результатами указанным методом */
                 //aka этап Sort
 
+				gettimeofday(&T3, NULL);
 #ifdef _OPENMP
                 int k = omp_get_num_procs();
 #pragma omp parallel default(none) shared(M2, M2_size) num_threads(k)
@@ -201,6 +208,11 @@ int main(int argc, char *argv[]) {
                     M2[location + 1] = elem;
                 }
 #endif
+
+				gettimeofday(&T4, NULL);
+				delta_sort_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
+				
+				gettimeofday(&T3, NULL);
                 double minNotZero = DBL_MAX;
 #pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
                 for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
@@ -216,6 +228,8 @@ int main(int argc, char *argv[]) {
                     if (((long) (M2[j] / minNotZero)) % 2 == 0)
                         X += sin(M2[i]);
                 }
+				gettimeofday(&T4, NULL);
+				delta_reduce_stage_ms += 1000 * (T4.tv_sec - T3.tv_sec) + (T4.tv_usec - T3.tv_usec) / 1000;
                 printf("N=%d\t X=%.20f\n", i, X);
             }
             free(M1);
@@ -225,7 +239,7 @@ int main(int argc, char *argv[]) {
 #ifdef _OPENMP
             delta_ms = (omp_get_wtime() - start) * 1000;
         }
-    }
+    
 
 #else
     gettimeofday(&T2, NULL);   /* запомнить текущее время T2 */
@@ -235,5 +249,9 @@ int main(int argc, char *argv[]) {
 
     printf("100%% completed\n");
     printf("\nN=%d. Milliseconds passed: %ld\n", N, delta_ms); /* T2 - T1 */
+	    printf("Map:%ld\n", delta_map_stage_ms);
+    printf("Merge:%ld\n", delta_merge_stage_ms);
+    printf("Sort:%ld\n", delta_sort_stage_ms);
+    printf("reduce:%ld\n", delta_reduce_stage_ms);
     return 0;
 }
