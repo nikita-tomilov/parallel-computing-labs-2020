@@ -2,12 +2,10 @@
 #include <stdlib.h>
 #include <math.h>
 #include <unistd.h>
-#include <assert.h>
 #include <float.h>
 
 #define MIN(a, b) (((a)<(b))?(a):(b))
 
-#define SCHEDULE_STRING
 #define CONST_NUM_THREADS 4
 #define MAX_I 50
 
@@ -108,11 +106,11 @@ void *printPercent(void *i) {
 int main(int argc, char *argv[]) {
     int i = 0;
     long delta_us;
-	long delta_generate_stage_us = 0;
-	long delta_map_stage_us = 0;
-	long delta_merge_stage_us = 0;
-	long delta_sort_stage_us = 0;
-	long delta_reduce_stage_us = 0;
+    long delta_generate_stage_us = 0;
+    long delta_map_stage_us = 0;
+    long delta_merge_stage_us = 0;
+    long delta_sort_stage_us = 0;
+    long delta_reduce_stage_us = 0;
     int N;
     pthread_t thread;
     pthread_create(&thread, NULL, printPercent, &i);
@@ -120,138 +118,138 @@ int main(int argc, char *argv[]) {
     double start = omp_get_wtime();
     omp_set_nested(1);
 
-        {
+    {
 #else
-            struct timeval T1, T2;
-            gettimeofday(&T1, NULL); /* запомнить текущее время T1 */
+        struct timeval T1, T2;
+        gettimeofday(&T1, NULL); /* запомнить текущее время T1 */
 #endif
 
-            int j;
-            N = atoi(argv[1]); /* N равен первому параметру командной строки */
-            int M2_size = N / 2;
-            double *M1 = (double *) malloc(N * sizeof(double));
-            double *M2 = (double *) malloc(M2_size * sizeof(double));
-            double *M2_copy = (double *) malloc((M2_size) * sizeof(double));
-            unsigned int A = (unsigned int) 240;
+        int j;
+        N = atoi(argv[1]); /* N равен первому параметру командной строки */
+        int M2_size = N / 2;
+        double *M1 = (double *) malloc(N * sizeof(double));
+        double *M2 = (double *) malloc(M2_size * sizeof(double));
+        double *M2_copy = (double *) malloc((M2_size) * sizeof(double));
+        unsigned int A = (unsigned int) 240;
 
 
-            for (i = 0; i < MAX_I; i++) /* 50 экспериментов */
-            {
-                /* Заполнить массив исходных данных размером N */
-                //aka Этап Generate
-                unsigned int seed = i;
-                time_meas_start();
-#pragma omp parallel for default(none) shared(M1, N, seed, A) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
-                for (j = 0; j < N; j++) {// генерим М1
-                    M1[j] = custom_rand(1.0, A, &seed);
+        for (i = 0; i < MAX_I; i++) /* 50 экспериментов */
+        {
+            /* Заполнить массив исходных данных размером N */
+            //aka Этап Generate
+            unsigned int seed = i;
+            time_meas_start();
+#pragma omp parallel for default(none) shared(M1, N, seed, A) num_threads(CONST_NUM_THREADS)
+            for (j = 0; j < N; j++) {// генерим М1
+                M1[j] = custom_rand(1.0, A, &seed);
+            }
+
+#pragma omp parallel for default(none) shared(M2, M2_copy, M2_size, seed, A) num_threads(CONST_NUM_THREADS)
+            for (j = 0; j < M2_size; j++) {// генерим М2 и его копию
+                double rand = custom_rand(A, 10.0 * A, &seed);
+                M2[j] = rand;
+                M2_copy[j] = rand;
+            }
+
+            delta_generate_stage_us += get_time_us();
+
+            /* Решить поставленную задачу, заполнить массив с результатами */
+            //aka этап Map для M1
+#pragma omp parallel for default(none) shared(M1, N) num_threads(CONST_NUM_THREADS)
+            for (j = 0; j < N; j++) {//Кубический корень после деления на число e
+                M1[j] = pow((double) (M1[j] / exp(1.0)), 1.0 / 3.0);
+            }
+
+            //этап Map для M2
+#pragma omp parallel for default(none) shared(M2, M2_copy, M2_size) num_threads(CONST_NUM_THREADS)
+            for (j = 0; j < M2_size; j++) {//Десятичный логарифм, возведенный в степень e
+                double sum = M2_copy[j]; //для нач элемента массива предыдущий элемент равен0
+                if (j > 0) {
+                    sum += M2_copy[j - 1]; //каждый элемент поочерёдно сложить с предыдущим
                 }
+                M2[j] = pow(log10(sum), exp(1.0));
+            }
+            delta_map_stage_us += get_time_us();
 
-#pragma omp parallel for default(none) shared(M2, M2_copy, M2_size, seed, A) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
-                for (j = 0; j < M2_size; j++) {// генерим М2 и его копию
-                    double rand = custom_rand(A, 10.0 * A, &seed);
-                    M2[j] = rand;
-                    M2_copy[j] = rand;
-                }
+            //этап Merge
+#pragma omp parallel for default(none) shared(M1, M2, M2_size) num_threads(CONST_NUM_THREADS)
+            for (j = 0; j < M2_size; j++) {//Модуль разности
+                M2[j] = fabs(M1[j] - M2[j]);
+            }
 
-                delta_generate_stage_us += get_time_us();
+            delta_merge_stage_us += get_time_us();
 
-                /* Решить поставленную задачу, заполнить массив с результатами */
-                //aka этап Map для M1
-#pragma omp parallel for default(none) shared(M1, N) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
-                for (j = 0; j < N; j++) {//Кубический корень после деления на число e
-                    M1[j] = pow((double) (M1[j] / exp(1.0)), 1.0 / 3.0);
-                }
-
-                //этап Map для M2
-#pragma omp parallel for default(none) shared(M2, M2_copy, M2_size) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
-                for (j = 0; j < M2_size; j++) {//Десятичный логарифм, возведенный в степень e
-                    double sum = M2_copy[j]; //для нач элемента массива предыдущий элемент равен0
-                    if (j > 0) {
-                        sum += M2_copy[j - 1]; //каждый элемент поочерёдно сложить с предыдущим
-                    }
-                    M2[j] = pow(log10(sum), exp(1.0));
-                }
-				delta_map_stage_us += get_time_us();
-
-                //этап Merge
-#pragma omp parallel for default(none) shared(M1, M2, M2_size) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
-                for (j = 0; j < M2_size; j++) {//Модуль разности
-                    M2[j] = fabs(M1[j] - M2[j]);
-                }
-
-				delta_merge_stage_us += get_time_us();
-
-                /* Отсортировать массив с результатами указанным методом */
-                //aka этап Sort
+            /* Отсортировать массив с результатами указанным методом */
+            //aka этап Sort
 
 #ifdef _OPENMP
-                int k = omp_get_num_procs();
+            int k = omp_get_num_procs();
 #pragma omp parallel default(none) shared(M2, M2_size) num_threads(k)
-                {
-                    const int num_threads = omp_get_num_threads(); //кол-во тредов выполняют секцию
-                    const int chunk_size = M2_size / num_threads + 1; // размер куска для треда
-                    const int cur_thread = omp_get_thread_num();//текущий номер треда
-                    const int from = chunk_size * cur_thread;
-                    const int to = MIN(chunk_size * (cur_thread + 1), M2_size);
-                    long location;
-                    double elem;
-                    for (int p = from + 1; p < to; p++) {
-                        elem = M2[p];
-                        location = p - 1;
-                        while (location >= from && M2[location] > elem) {
-                            M2[location + 1] = M2[location];
-                            location = location - 1;
-                        }
-                        M2[location + 1] = elem;
-                    }
-                }
-                //здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
-                //но сам массив еще нет. когда у нас массив частично сортирован, mergeSort - то что нужно
-                mergeSort(M2, 0, M2_size - 1);
-
-#else
+            {
+                const int num_threads = omp_get_num_threads(); //кол-во тредов выполняют секцию
+                const int chunk_size = M2_size / num_threads + 1; // размер куска для треда
+                const int cur_thread = omp_get_thread_num();//текущий номер треда
+                const int from = chunk_size * cur_thread;
+                const int to = MIN(chunk_size * (cur_thread + 1), M2_size);
                 long location;
                 double elem;
-                for (j = 1; j < M2_size; j++) {//Сортировка вставками (Insertion sort).
-                    elem = M2[j];
-                    location = j - 1;
-                    while (location >= 0 && M2[location] > elem) {
+                for (int p = from + 1; p < to; p++) {
+                    elem = M2[p];
+                    location = p - 1;
+                    while (location >= from && M2[location] > elem) {
                         M2[location + 1] = M2[location];
                         location = location - 1;
                     }
                     M2[location + 1] = elem;
                 }
+            }
+            //здесь у нас 6 (или k) кусков массивов, каждый из которых внутри себя отсортирован,
+            //но сам массив еще нет. когда у нас массив частично сортирован, mergeSort - то что нужно
+            mergeSort(M2, 0, M2_size - 1);
+
+#else
+            long location;
+            double elem;
+            for (j = 1; j < M2_size; j++) {//Сортировка вставками (Insertion sort).
+                elem = M2[j];
+                location = j - 1;
+                while (location >= 0 && M2[location] > elem) {
+                    M2[location + 1] = M2[location];
+                    location = location - 1;
+                }
+                M2[location + 1] = elem;
+            }
 #endif
 
-				delta_sort_stage_us += get_time_us();
+            delta_sort_stage_us += get_time_us();
 
-                double minNotZero = DBL_MAX;
-#pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
-                for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
-                    if (M2[j] > 0 && M2[j] < minNotZero)
-                        minNotZero = M2[j];
-                }
-
-                double X = 0;
-#pragma omp parallel for default(none) shared(M2, M2_size, minNotZero, i) reduction(+:X) num_threads(CONST_NUM_THREADS) SCHEDULE_STRING
-                for (j = 0; j < M2_size; j++) {//Рассчитать сумму синусов тех элементов массиваМ2,
-                    //которые при делении на минимальный ненулевой
-                    //элемент массива М2 дают чётное число
-                    if (((long) (M2[j] / minNotZero)) % 2 == 0)
-                        X += sin(M2[j]);
-                }
-
-				delta_reduce_stage_us += get_time_us();
-                printf("N=%d\t X=%.20f\n", i, X);
+            double minNotZero = DBL_MAX;
+#pragma omp parallel for default(none) shared(M2, M2_size, i) reduction(min:minNotZero) num_threads(CONST_NUM_THREADS)
+            for (j = 0; j < M2_size; j++) {//ищим минимальный ненулевой элемент массива М2
+                if (M2[j] > 0 && M2[j] < minNotZero)
+                    minNotZero = M2[j];
             }
-            free(M1);
-            free(M2);
-            free(M2_copy);
+
+            double X = 0;
+#pragma omp parallel for default(none) shared(M2, M2_size, minNotZero, i) reduction(+:X) num_threads(CONST_NUM_THREADS)
+            for (j = 0; j < M2_size; j++) {//Рассчитать сумму синусов тех элементов массиваМ2,
+                //которые при делении на минимальный ненулевой
+                //элемент массива М2 дают чётное число
+                if (((long) (M2[j] / minNotZero)) % 2 == 0)
+                    X += sin(M2[j]);
+            }
+
+            delta_reduce_stage_us += get_time_us();
+            printf("N=%d\t X=%.20f\n", i, X);
+        }
+        free(M1);
+        free(M2);
+        free(M2_copy);
 
 #ifdef _OPENMP
-            delta_us = (omp_get_wtime() - start) * 1000;
-        }
-    
+        delta_us = (omp_get_wtime() - start) * 1000;
+    }
+
 
 #else
     gettimeofday(&T2, NULL);   /* запомнить текущее время T2 */
