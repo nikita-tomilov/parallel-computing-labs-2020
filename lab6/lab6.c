@@ -35,6 +35,8 @@ int NUM_THREADS = 4;
 int CHUNK_SIZE = 20;
 int WORK_PARALLEL = 1;
 
+#define GROUP_SIZE 12;
+
 void merge(float arr[], int l, int m, int r) {
     int n1 = m - l + 1;
     int n2 = r - m;
@@ -335,7 +337,7 @@ void createProgram(char *fileName) {
     fclose(program_handle);
 }
 
-void MergeWithOpenCL(float *M1, float *M2, int M2_size) {
+void RunWithOpenCL(char* source_file_path, char* func_name, float *M1, int M1_size, float *M2, int M2_size, int* num_groups) {
     cl_platform_id platform;
     cl_int ret = clGetPlatformIDs(1, &platform, &platformCount);
     debug_print_ret_code("clGetPlatformIDs", ret);
@@ -350,7 +352,7 @@ void MergeWithOpenCL(float *M1, float *M2, int M2_size) {
     cl_command_queue queue = clCreateCommandQueue(context, device, 0, &ret);
     debug_print_ret_code("clCreateCommandQueue", ret);
 
-    createProgram("stage_merge.cl");
+    createProgram(source_file_path);
     cl_program program = clCreateProgramWithSource(context, 1, (const char **) &source_str,
                                                    (const size_t *) &source_size, &ret);
     debug_print_ret_code("clCreateProgramWithSource ret", ret);
@@ -365,39 +367,46 @@ void MergeWithOpenCL(float *M1, float *M2, int M2_size) {
         printf("%s\n", log);
     }
 
-    cl_kernel kernel = clCreateKernel(program, "merge", &ret);
+    cl_kernel kernel = clCreateKernel(program, func_name, &ret);
     debug_print_ret_code("clCreateKernel", ret);
 
-    cl_mem M1_clmem = clCreateBuffer(context, CL_MEM_READ_ONLY, M2_size * sizeof(float), NULL, &ret);
+    cl_mem M1_clmem = clCreateBuffer(context, CL_MEM_READ_ONLY, M1_size * sizeof(float), NULL, &ret);
     debug_print_ret_code("clCreateBuffer", ret);
     cl_mem M2_clmem = clCreateBuffer(context, CL_MEM_READ_ONLY, M2_size * sizeof(float), NULL, &ret);
     debug_print_ret_code("clCreateBuffer M2", ret);
-    cl_mem M2_ret_clmem = clCreateBuffer(context, CL_MEM_WRITE_ONLY, M2_size * sizeof(float), NULL, &ret);
+    cl_mem ret_clmem = clCreateBuffer(context, CL_MEM_WRITE_ONLY, M2_size * sizeof(float), NULL, &ret);
     debug_print_ret_code("clCreateBuffer M2_ret", ret);
 
-    ret = clEnqueueWriteBuffer(queue, M1_clmem, CL_TRUE, 0, M2_size * sizeof(float), M1, 0, NULL, NULL);
+    ret = clEnqueueWriteBuffer(queue, M1_clmem, CL_TRUE, 0, M1_size * sizeof(float), M1, 0, NULL, NULL);
     debug_print_ret_code("clEnqueueWriteBuffer M1_clmem", ret);
     ret = clEnqueueWriteBuffer(queue, M2_clmem, CL_TRUE, 0, M2_size * sizeof(float), M2, 0, NULL, NULL);
     debug_print_ret_code("clEnqueueWriteBuffer M2_clmem", ret);
 
     clSetKernelArg(kernel, 0, sizeof(M1_clmem), (void *) &M1_clmem);
     clSetKernelArg(kernel, 1, sizeof(M2_clmem), (void *) &M2_clmem);
-    clSetKernelArg(kernel, 2, sizeof(M2_ret_clmem), (void *) &M2_ret_clmem);
+    clSetKernelArg(kernel, 2, sizeof(ret_clmem), (void *) &ret_clmem);
 
     size_t uGlobalWorkSize = M2_size;
-    clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &uGlobalWorkSize, NULL, 0, NULL, NULL);
+    size_t retMemSize = M2_size;
+    if (num_groups != NULL) {
+        size_t uLocalWorkSize = GROUP_SIZE;
+        retMemSize = M2_size / GROUP_SIZE;
+        clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &uGlobalWorkSize, &uLocalWorkSize, 0, NULL, NULL);
+        *num_groups = retMemSize;
+    } else {
+        clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &uGlobalWorkSize, NULL, 0, NULL, NULL);
+    }
     clFinish(queue);
 
-    cl_float *puData = (cl_float *) clEnqueueMapBuffer(queue, M2_ret_clmem, CL_TRUE, CL_MAP_READ, 0,
-                                                       M2_size * sizeof(cl_float), 0, NULL, NULL, NULL);
+    cl_float *puData = (cl_float *) clEnqueueMapBuffer(queue, ret_clmem, CL_TRUE, CL_MAP_READ, 0,
+                                                       retMemSize * sizeof(cl_float), 0, NULL, NULL, NULL);
 
-    for (int i = 0; i < M2_size; ++i)
-        M2[i] = puData[i];
+    memcpy(M2, puData, retMemSize * sizeof(float));
 
-    clEnqueueUnmapMemObject(queue, M2_ret_clmem, puData, 0, NULL, NULL);
+    clEnqueueUnmapMemObject(queue, ret_clmem, puData, 0, NULL, NULL);
     clReleaseMemObject(M1_clmem);
     clReleaseMemObject(M2_clmem);
-    clReleaseMemObject(M2_ret_clmem);
+    clReleaseMemObject(ret_clmem);
     clReleaseContext(context);
     clReleaseCommandQueue(queue);
     clReleaseProgram(program);
@@ -485,7 +494,7 @@ int main(int argc, char *argv[]) {
             Merge(fullChunk(M2, M1, M2_size));
         }*/
         //OpenCL
-        MergeWithOpenCL(M1, M2, M2_size);
+        RunWithOpenCL("stage_merge.cl", "merge", M1, M2_size, M2, M2_size, NULL);
         delta_merge_stage_us += get_time_us();
 
         /* Отсортировать массив с результатами указанным методом */
@@ -517,16 +526,22 @@ int main(int argc, char *argv[]) {
           которые при делении на минимальный ненулевой
           элемент массива М2 дают чётное число*/
         //aka Reduce-2
-        float X;
-        if (WORK_PARALLEL) {
+        float X = 0;
+        /*if (WORK_PARALLEL) {
             multiThreadComputingReduction(M2, &minNotZero, M2_size, NUM_THREADS, SumOfSine, reductionSum, 0,
                                           CHUNK_SIZE);
             X = reductionResult;
         } else {
             X = SumOfSine(fullChunk(M2, &minNotZero, M2_size));
-        }
+        }*/
         //OpenCL
-        //X = sum_sin(M2, M2_size, minNotZero);
+        float local[1];
+        local[0] = minNotZero;
+        int num_groups = 0;
+        RunWithOpenCL("stage_reduce.cl", "sum_sin", local, 1, M2, M2_size, &num_groups);
+        for (int o = 0; o < num_groups; o++) {
+            X += M2[o];
+        }
         delta_reduce_stage_us += get_time_us();
         printf("N=%d\t X=%.20f\n", i, X);
     }
