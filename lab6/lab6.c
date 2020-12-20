@@ -1,5 +1,7 @@
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define GENERATE_PARALLEL 0
+#define PTHREAD_PARALLEL 1
+#define OPENCL_PARALLEL 1
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -230,16 +232,6 @@ void InsertionSortChunk(Chunk_t chunk) {
         }
         M2[location + 1] = elem;
     }
-}
-
-float reductionMin(float a, float b) {
-    if (isnan(b)) return a;
-    return MIN(a, b);
-}
-
-float reductionSum(float a, float b) {
-    if (isnan(b)) return a;
-    return a + b;
 }
 
 float MinNotZero(Chunk_t chunk) {
@@ -488,13 +480,12 @@ int main(int argc, char *argv[]) {
         delta_map_stage_us += get_time_us();
 
         //этап Merge
-        /*if (WORK_PARALLEL) {
-            multiThreadComputing(M2, M1, M2_size, NUM_THREADS, Merge, CHUNK_SIZE);
+        if (WORK_PARALLEL) {
+            //OpenCL
+            RunWithOpenCL("stage_merge.cl", "merge", M1, M2_size, M2, M2_size, NULL);
         } else {
             Merge(fullChunk(M2, M1, M2_size));
-        }*/
-        //OpenCL
-        RunWithOpenCL("stage_merge.cl", "merge", M1, M2_size, M2, M2_size, NULL);
+        }
         delta_merge_stage_us += get_time_us();
 
         /* Отсортировать массив с результатами указанным методом */
@@ -512,35 +503,39 @@ int main(int argc, char *argv[]) {
 
         /* Найти минимальный ненулевой элемент массива */
         //aka Reduce-1
-        float minNotZero = DBL_MAX;
+        float minNotZero = FLT_MAX;
         if (WORK_PARALLEL) {
-            multiThreadComputingReduction(M2, NULL, M2_size, NUM_THREADS, MinNotZero, reductionMin, DBL_MAX,
-                                          CHUNK_SIZE);
-            minNotZero = reductionResult;
+            //OpenCL
+            memcpy(M2_copy, M2, M2_size * sizeof(float));
+            float local[1];
+            int num_groups = 0;
+            RunWithOpenCL("stage_reduce_1.cl", "find_mnz", local, 1, M2_copy, M2_size, &num_groups);
+            for (int o = 0; o < num_groups; o++) {
+                if ((minNotZero > M2_copy[o]) && (M2_copy[o] != 0)) {
+                    minNotZero = M2_copy[o];
+                }
+            }
         } else {
             minNotZero = MinNotZero(fullChunk(M2, NULL, M2_size));
         }
-        //printf("%f\n", minNotZero);
 
         /*Рассчитать сумму синусов тех элементов массива М2,
           которые при делении на минимальный ненулевой
           элемент массива М2 дают чётное число*/
         //aka Reduce-2
         float X = 0;
-        /*if (WORK_PARALLEL) {
-            multiThreadComputingReduction(M2, &minNotZero, M2_size, NUM_THREADS, SumOfSine, reductionSum, 0,
-                                          CHUNK_SIZE);
-            X = reductionResult;
+        if (WORK_PARALLEL) {
+            //OpenCL
+            float local[1];
+            int num_groups = 0;
+            local[0] = minNotZero;
+            num_groups = 0;
+            RunWithOpenCL("stage_reduce_2.cl", "sum_sin", local, 1, M2, M2_size, &num_groups);
+            for (int o = 0; o < num_groups; o++) {
+                X += M2[o];
+            }
         } else {
             X = SumOfSine(fullChunk(M2, &minNotZero, M2_size));
-        }*/
-        //OpenCL
-        float local[1];
-        local[0] = minNotZero;
-        int num_groups = 0;
-        RunWithOpenCL("stage_reduce.cl", "sum_sin", local, 1, M2, M2_size, &num_groups);
-        for (int o = 0; o < num_groups; o++) {
-            X += M2[o];
         }
         delta_reduce_stage_us += get_time_us();
         printf("N=%d\t X=%.20f\n", i, X);
