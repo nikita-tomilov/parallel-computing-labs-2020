@@ -25,6 +25,7 @@ cl_device_id device;
 cl_uint uNumCPU;
 
 void createProgram(char *fileName, char *source_str, size_t source_size);
+
 void createProgram_sin(char *fileName);
 
 cl_mem M2_clmem_sin;
@@ -63,7 +64,9 @@ void cl_sin_destroy();
 float sum_sin(float *M2, int M2_size, float min_non_zero);
 
 void mergecl(float *M1, float *M2, int M2_size);
+
 void cl_mrg_init(int M2_size);
+
 void cl_mrg_destroy();
 
 int NUM_THREADS = 4;
@@ -460,7 +463,7 @@ int main(int argc, char *argv[]) {
           элемент массива М2 дают чётное число*/
         //aka Reduce-2
         float X;
-/*        if (WORK_PARALLEL) {
+        /*if (WORK_PARALLEL) {
             multiThreadComputingReduction(M2, &minNotZero, M2_size, NUM_THREADS, SumOfSine, reductionSum, 0,
                                           CHUNK_SIZE);
             X = reductionResult;
@@ -507,9 +510,13 @@ void createProgram_sin(char *fileName) {
     rewind(program_handle);
     source_str_sin = (char *) malloc(source_size_sin + 1);
     source_str_sin[source_size_sin] = '\0';
-    fread(source_str_sin, sizeof(char), source_size_sin, program_handle);
+    unsigned long n = fread(source_str_sin, sizeof(char), source_size_sin, program_handle);
+    if (n < 0) {
+        printf("error in reading file %s: %lu\n", fileName, n);
+    }
     fclose(program_handle);
 }
+
 void createProgram_mrg(char *fileName) {
     FILE *program_handle;
     program_handle = fopen(fileName, "r");
@@ -522,7 +529,10 @@ void createProgram_mrg(char *fileName) {
     rewind(program_handle);
     source_str_mrg = (char *) malloc(source_size_mrg + 1);
     source_str_mrg[source_size_mrg] = '\0';
-    fread(source_str_mrg, sizeof(char), source_size_mrg, program_handle);
+    unsigned long n = fread(source_str_mrg, sizeof(char), source_size_mrg, program_handle);
+    if (n < 0) {
+        printf("error in reading file %s: %lu\n", fileName, n);
+    }
     fclose(program_handle);
 }
 
@@ -584,15 +594,15 @@ void cl_sin_init(int M2_size) {
     cl_platform_id platform;
     cl_int ret = clGetPlatformIDs(1, &platform, &platformCount);
 
-    ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_ALL, 1, &device, &uNumCPU);
+    ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, &uNumCPU);
 
     context_sin = clCreateContext(NULL, 1, &device, NULL, NULL, &ret);
 
     queue_sin = clCreateCommandQueue(context_sin, device, 0, &ret);
 
-    createProgram_sin("sum_sin.cl");
+    createProgram_sin("/home/hotaro/ifmo/parallel-computing/lab6/sum_sin.cl");
     program_sin = clCreateProgramWithSource(context_sin, 1, (const char **) &source_str_sin,
-                                        (const size_t *) &source_size_sin, &ret);
+                                            (const size_t *) &source_size_sin, &ret);
 
     ret = clBuildProgram(program_sin, 1, &device, "-cl-std=CL1.2", NULL, NULL);
     printf("clBuildProgram ret %d\n", ret);
@@ -626,15 +636,15 @@ void cl_mrg_init(int M2_size) {
     cl_platform_id platform;
     cl_int ret = clGetPlatformIDs(1, &platform, &platformCount);
 
-    ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_ALL, 1, &device, &uNumCPU);
+    ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, &uNumCPU);
 
     context_mrg = clCreateContext(NULL, 1, &device, NULL, NULL, &ret);
 
     queue_mrg = clCreateCommandQueue(context_mrg, device, 0, &ret);
 
-    createProgram_mrg("stage_merge.cl");
+    createProgram_mrg("/home/hotaro/ifmo/parallel-computing/lab6/stage_merge.cl");
     program_mrg = clCreateProgramWithSource(context_mrg, 1, (const char **) &source_str_mrg,
-                                        (const size_t *) &source_size_mrg, &ret);
+                                            (const size_t *) &source_size_mrg, &ret);
 
     ret = clBuildProgram(program_mrg, 1, &device, "-cl-std=CL1.2", NULL, NULL);
     if (ret == CL_BUILD_PROGRAM_FAILURE) {
