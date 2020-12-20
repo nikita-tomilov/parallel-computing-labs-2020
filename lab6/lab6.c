@@ -35,7 +35,7 @@ int NUM_THREADS = 4;
 int CHUNK_SIZE = 20;
 int WORK_PARALLEL = 1;
 
-#define GROUP_SIZE 12;
+#define GROUP_SIZE 12
 
 void merge(float arr[], int l, int m, int r) {
     int n1 = m - l + 1;
@@ -390,7 +390,7 @@ void RunWithOpenCL(char* source_file_path, char* func_name, float *M1, int M1_si
     size_t retMemSize = M2_size;
     if (num_groups != NULL) {
         size_t uLocalWorkSize = GROUP_SIZE;
-        retMemSize = M2_size / GROUP_SIZE;
+        retMemSize = M2_size / GROUP_SIZE + 1;
         clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &uGlobalWorkSize, &uLocalWorkSize, 0, NULL, NULL);
         *num_groups = retMemSize;
     } else {
