@@ -372,9 +372,6 @@ void teardownOpenCL() {
 void RunWithOpenCL(char* func_name, float *M1, int M1_size, float *M2, int M2_size, int* num_groups) {
     cl_int ret;
 
-    setupOpenCLContext();
-    buildKernelProgram();
-
     cl_command_queue queue = clCreateCommandQueue(context, device, 0, &ret);
     debug_print_ret_code("clCreateCommandQueue", ret);
 
@@ -420,8 +417,6 @@ void RunWithOpenCL(char* func_name, float *M1, int M1_size, float *M2, int M2_si
     clReleaseMemObject(ret_clmem);
     clReleaseCommandQueue(queue);
     clReleaseKernel(kernel);
-
-    teardownOpenCL();
 }
 
 int main(int argc, char *argv[]) {
@@ -465,6 +460,11 @@ int main(int argc, char *argv[]) {
     }
 
     printf("mode Parallel=%d, NumThreads=%d, ChunkSize=%d\n", WORK_PARALLEL, NUM_THREADS, CHUNK_SIZE);
+
+    if (WORK_PARALLEL) {
+        setupOpenCLContext();
+        buildKernelProgram();
+    }
 
     for (i = 0; i < MAX_I; i++) /* 50 экспериментов */
     {
@@ -576,5 +576,9 @@ int main(int argc, char *argv[]) {
     printf("Reduce:%ld\n", delta_reduce_stage_us);
 
     pthread_mutex_destroy(&mutex);
+
+    if (WORK_PARALLEL) {
+        teardownOpenCL();
+    }
     return 0;
 }
