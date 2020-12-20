@@ -1,4 +1,5 @@
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#define GENERATE_PARALLEL 1
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,62 +13,23 @@
 
 #include <sys/time.h>
 
+#define DEBUG 0
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) fprintf(stderr, fmt, __VA_ARGS__); } while (0)
+
+void debug_print_ret_code(char *func, int ret) {
+    if (ret < 0) {
+        printf("WARNING: %s returned %d\n", func, ret);
+    } else {
+        debug_print("%s returned %d\n", func, ret);
+    }
+}
+
 #define _GNU_SOURCE
 #define MIN(a, b) (((a)<(b))?(a):(b))
 #define MAX_I 50
 #define CL_TARGET_OPENCL_VERSION 120
 #define __CL_ENABLE_EXCEPTIONS
-
-
-cl_uint platformCount;
-cl_uint ret;
-cl_device_id device;
-cl_uint uNumCPU;
-
-void createProgram(char *fileName, char *source_str, size_t source_size);
-
-void createProgram_sin(char *fileName);
-
-cl_mem M2_clmem_sin;
-cl_mem M2_ret_clmem_sin;
-cl_kernel kernel_sin;
-cl_command_queue queue_sin;
-cl_context context_sin;
-cl_float *puData_sin;
-cl_program program_sin;
-char *source_str_sin;
-size_t source_size_sin;
-char *source_str_sin;
-size_t source_size_sin;
-
-cl_mem M1_clmem_mrg;
-cl_mem M1_ret_clmem_mrg;
-cl_mem M2_clmem_mrg;
-cl_mem M2_ret_clmem_mrg;
-cl_kernel kernel_mrg;
-cl_command_queue queue_mrg;
-cl_context context_mrg;
-cl_float *puData_mrg;
-cl_program program_mrg;
-char *source_str_mrg;
-size_t source_size_mrg;
-char *source_str_mrg;
-size_t source_size_mrg;
-
-//const int num_cores = CL_DEVICE_MAX_COMPUTE_UNITS;
-const int num_cores = 12;
-
-void cl_sin_init(int M2_size);
-
-void cl_sin_destroy();
-
-float sum_sin(float *M2, int M2_size, float min_non_zero);
-
-void mergecl(float *M1, float *M2, int M2_size);
-
-void cl_mrg_init(int M2_size);
-
-void cl_mrg_destroy();
 
 int NUM_THREADS = 4;
 int CHUNK_SIZE = 20;
@@ -347,6 +309,115 @@ void GenerateM2(Chunk_t chunk) {
     }
 }
 
+size_t source_size;
+char *source_str;
+
+cl_uint platformCount;
+cl_device_id device;
+cl_uint uNumCPU;
+cl_context context;
+
+cl_program program;
+
+void createProgram(char *fileName) {
+    FILE *program_handle;
+    program_handle = fopen(fileName, "r");
+    if (program_handle == NULL) {
+        perror("Couldn't find the program file");
+        exit(1);
+    }
+    fseek(program_handle, 0, SEEK_END);
+    source_size = ftell(program_handle);
+    rewind(program_handle);
+    source_str = (char *) malloc(source_size + 1);
+    source_str[source_size] = '\0';
+    unsigned long n = fread(source_str, sizeof(char), source_size, program_handle);
+    if (n < 0) {
+        printf("error in reading %s: %lu\n", fileName, n);
+    }
+    fclose(program_handle);
+}
+
+void setupOpenCLContext() {
+    cl_platform_id platform;
+    cl_int ret = clGetPlatformIDs(1, &platform, &platformCount);
+    debug_print_ret_code("clGetPlatformIDs", ret);
+    debug_print("number platforms %d\n", platformCount);
+
+    ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_ALL, 1, &device, &uNumCPU);
+    debug_print_ret_code("clGetDeviceIDs", ret);
+
+    context = clCreateContext(NULL, 1, &device, NULL, NULL, &ret);
+    debug_print_ret_code("clCreateContext", ret);
+}
+
+void buildKernelProgram() {
+    cl_int ret;
+    createProgram("kernel.cl");
+    program = clCreateProgramWithSource(context, 1, (const char **) &source_str,
+                                        (const size_t *) &source_size, &ret);
+    debug_print_ret_code("clCreateProgramWithSource ret", ret);
+
+    ret = clBuildProgram(program, 1, &device, "-cl-std=CL1.2", NULL, NULL);
+    debug_print_ret_code("clBuildProgram", ret);
+    if (ret == CL_BUILD_PROGRAM_FAILURE) {
+        size_t log_size;
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+        char *log = (char *) malloc(log_size);
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+        printf("%s\n", log);
+    }
+    free(source_str);
+}
+
+void teardownOpenCL() {
+    clReleaseContext(context);
+    clReleaseProgram(program);
+}
+
+void RunWithOpenCL(char *func_name, float *M1, int M1_size, float *M2, int M2_size) {
+    cl_int ret;
+
+    cl_command_queue queue = clCreateCommandQueue(context, device, 0, &ret);
+    debug_print_ret_code("clCreateCommandQueue", ret);
+
+    cl_kernel kernel = clCreateKernel(program, func_name, &ret);
+    debug_print_ret_code("clCreateKernel", ret);
+
+    cl_mem M1_clmem = clCreateBuffer(context, CL_MEM_READ_ONLY, M1_size * sizeof(float), NULL, &ret);
+    debug_print_ret_code("clCreateBuffer", ret);
+    cl_mem M2_clmem = clCreateBuffer(context, CL_MEM_READ_ONLY, M2_size * sizeof(float), NULL, &ret);
+    debug_print_ret_code("clCreateBuffer M2", ret);
+    cl_mem ret_clmem = clCreateBuffer(context, CL_MEM_WRITE_ONLY, M2_size * sizeof(float), NULL, &ret);
+    debug_print_ret_code("clCreateBuffer M2_ret", ret);
+
+    ret = clEnqueueWriteBuffer(queue, M1_clmem, CL_TRUE, 0, M1_size * sizeof(float), M1, 0, NULL, NULL);
+    debug_print_ret_code("clEnqueueWriteBuffer M1_clmem", ret);
+    ret = clEnqueueWriteBuffer(queue, M2_clmem, CL_TRUE, 0, M2_size * sizeof(float), M2, 0, NULL, NULL);
+    debug_print_ret_code("clEnqueueWriteBuffer M2_clmem", ret);
+
+    clSetKernelArg(kernel, 0, sizeof(M1_clmem), (void *) &M1_clmem);
+    clSetKernelArg(kernel, 1, sizeof(M2_clmem), (void *) &M2_clmem);
+    clSetKernelArg(kernel, 2, sizeof(ret_clmem), (void *) &ret_clmem);
+
+    size_t uGlobalWorkSize = M2_size;
+    size_t retMemSize = M2_size;
+    clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &uGlobalWorkSize, NULL, 0, NULL, NULL);
+    clFinish(queue);
+
+    cl_float *puData = (cl_float *) clEnqueueMapBuffer(queue, ret_clmem, CL_TRUE, CL_MAP_READ, 0,
+                                                       retMemSize * sizeof(cl_float), 0, NULL, NULL, NULL);
+
+    memcpy(M2, puData, retMemSize * sizeof(float));
+
+    clEnqueueUnmapMemObject(queue, ret_clmem, puData, 0, NULL, NULL);
+    clReleaseMemObject(M1_clmem);
+    clReleaseMemObject(M2_clmem);
+    clReleaseMemObject(ret_clmem);
+    clReleaseCommandQueue(queue);
+    clReleaseKernel(kernel);
+}
+
 int main(int argc, char *argv[]) {
     if ((argc < 2) || (argc > 5)) {
         printf("usage: %s N [ thread_count [ chunk_size ] ]\n", argv[0]);
@@ -376,9 +447,6 @@ int main(int argc, char *argv[]) {
     float *M2_copy = (float *) malloc((M2_size) * sizeof(float));
     unsigned int A = (unsigned int) 240;
 
-    cl_sin_init(M2_size);//openCL init
-    cl_mrg_init(M2_size);
-
     if (argc > 2) {
         NUM_THREADS = (int) strtol(argv[2], &end, 10);
         if (NUM_THREADS == 0) {
@@ -392,6 +460,11 @@ int main(int argc, char *argv[]) {
 
     printf("mode Parallel=%d, NumThreads=%d, ChunkSize=%d\n", WORK_PARALLEL, NUM_THREADS, CHUNK_SIZE);
 
+    if (WORK_PARALLEL) {
+        setupOpenCLContext();
+        buildKernelProgram();
+    }
+
     for (i = 0; i < MAX_I; i++) /* 50 экспериментов */
     {
         /* Заполнить массив исходных данных размером N */
@@ -400,7 +473,7 @@ int main(int argc, char *argv[]) {
         gA = A;
         gSeed = i;
         //Параллельная версия Generate будет не совпадать с ЛР1, т к порядок вызова rand_r неизвестен заранее
-        if (WORK_PARALLEL) {
+        if (GENERATE_PARALLEL) {
             multiThreadComputing(M1, NULL, N, NUM_THREADS, GenerateM1, CHUNK_SIZE);
             multiThreadComputing(M2, M2_copy, M2_size, NUM_THREADS, GenerateM2, CHUNK_SIZE);
         } else {
@@ -413,9 +486,9 @@ int main(int argc, char *argv[]) {
         /* Решить поставленную задачу, заполнить массив с результатами */
         if (WORK_PARALLEL) {
             //aka этап Map для M1
-            multiThreadComputing(M1, NULL, N, NUM_THREADS, M1Map, CHUNK_SIZE);
+            RunWithOpenCL("m1map", M1, N, M1, N);
             //этап Map для M2
-            multiThreadComputing(M2, M2_copy, M2_size, NUM_THREADS, M2Map, CHUNK_SIZE);
+            RunWithOpenCL("m2map", M2_copy, M2_size, M2, M2_size);
         } else {
             M1Map(fullChunk(M1, NULL, N));
             M2Map(fullChunk(M2, M2_copy, M2_size));
@@ -424,13 +497,13 @@ int main(int argc, char *argv[]) {
         delta_map_stage_us += get_time_us();
 
         //этап Merge
-        /*if (WORK_PARALLEL) {
-            multiThreadComputing(M2, M1, M2_size, NUM_THREADS, Merge, CHUNK_SIZE);
+        if (WORK_PARALLEL) {
+            //OpenCL
+            RunWithOpenCL("merge", M1, M2_size, M2, M2_size);
         } else {
             Merge(fullChunk(M2, M1, M2_size));
-        }*/
-        //OpenCL
-        mergecl(M1, M2, M2_size);
+        }
+
         delta_merge_stage_us += get_time_us();
 
         /* Отсортировать массив с результатами указанным методом */
@@ -448,7 +521,7 @@ int main(int argc, char *argv[]) {
 
         /* Найти минимальный ненулевой элемент массива */
         //aka Reduce-1
-        float minNotZero = DBL_MAX;
+        float minNotZero = FLT_MAX;
         if (WORK_PARALLEL) {
             multiThreadComputingReduction(M2, NULL, M2_size, NUM_THREADS, MinNotZero, reductionMin, DBL_MAX,
                                           CHUNK_SIZE);
@@ -456,22 +529,20 @@ int main(int argc, char *argv[]) {
         } else {
             minNotZero = MinNotZero(fullChunk(M2, NULL, M2_size));
         }
-        //printf("%f\n", minNotZero);
+        //printf("for i = %d minNotZero = %f\n", i, minNotZero);
 
         /*Рассчитать сумму синусов тех элементов массива М2,
           которые при делении на минимальный ненулевой
           элемент массива М2 дают чётное число*/
         //aka Reduce-2
-        float X;
-        /*if (WORK_PARALLEL) {
+        float X = 0;
+        if (WORK_PARALLEL) {
             multiThreadComputingReduction(M2, &minNotZero, M2_size, NUM_THREADS, SumOfSine, reductionSum, 0,
                                           CHUNK_SIZE);
             X = reductionResult;
         } else {
             X = SumOfSine(fullChunk(M2, &minNotZero, M2_size));
-        }*/
-        //OpenCL
-        X = sum_sin(M2, M2_size, minNotZero);
+        }
         delta_reduce_stage_us += get_time_us();
         printf("N=%d\t X=%.20f\n", i, X);
     }
@@ -493,201 +564,9 @@ int main(int argc, char *argv[]) {
     printf("Reduce:%ld\n", delta_reduce_stage_us);
 
     pthread_mutex_destroy(&mutex);
-    cl_sin_destroy();
-    cl_mrg_destroy();
+
+    if (WORK_PARALLEL) {
+        teardownOpenCL();
+    }
     return 0;
-}
-
-void createProgram_sin(char *fileName) {
-    FILE *program_handle;
-    program_handle = fopen(fileName, "r");
-    if (program_handle == NULL) {
-        perror("Couldn't find the program file");
-        exit(1);
-    }
-    fseek(program_handle, 0, SEEK_END);
-    source_size_sin = ftell(program_handle);
-    rewind(program_handle);
-    source_str_sin = (char *) malloc(source_size_sin + 1);
-    source_str_sin[source_size_sin] = '\0';
-    unsigned long n = fread(source_str_sin, sizeof(char), source_size_sin, program_handle);
-    if (n < 0) {
-        printf("error in reading file %s: %lu\n", fileName, n);
-    }
-    fclose(program_handle);
-}
-
-void createProgram_mrg(char *fileName) {
-    FILE *program_handle;
-    program_handle = fopen(fileName, "r");
-    if (program_handle == NULL) {
-        perror("Couldn't find the program file");
-        exit(1);
-    }
-    fseek(program_handle, 0, SEEK_END);
-    source_size_mrg = ftell(program_handle);
-    rewind(program_handle);
-    source_str_mrg = (char *) malloc(source_size_mrg + 1);
-    source_str_mrg[source_size_mrg] = '\0';
-    unsigned long n = fread(source_str_mrg, sizeof(char), source_size_mrg, program_handle);
-    if (n < 0) {
-        printf("error in reading file %s: %lu\n", fileName, n);
-    }
-    fclose(program_handle);
-}
-
-void mergecl(float *M1, float *M2, int M2_size) {
-
-    ret = clEnqueueWriteBuffer(queue_mrg, M1_clmem_mrg, CL_TRUE, 0, M2_size * sizeof(float), M1, 0, NULL, NULL);
-    ret = clEnqueueWriteBuffer(queue_mrg, M2_clmem_mrg, CL_TRUE, 0, M2_size * sizeof(float), M2, 0, NULL, NULL);
-
-    clSetKernelArg(kernel_mrg, 0, sizeof(M1_clmem_mrg), (void *) &M1_clmem_mrg);
-    clSetKernelArg(kernel_mrg, 1, sizeof(M2_clmem_mrg), (void *) &M2_clmem_mrg);
-    clSetKernelArg(kernel_mrg, 2, sizeof(M2_ret_clmem_mrg), (void *) &M2_ret_clmem_mrg);
-
-    size_t uGlobalWorkSize = M2_size;
-    clEnqueueNDRangeKernel(
-            queue_mrg,
-            kernel_mrg,
-            1,
-            NULL,
-            &uGlobalWorkSize,
-            NULL,
-            0,
-            NULL,
-            NULL);
-    clFinish(queue_mrg);
-
-    for (int i = 0; i < M2_size; ++i)
-        M2[i] = puData_mrg[i];
-
-}
-
-float sum_sin(float *M2, int M2_size, float min_non_zero) {
-    ret = clEnqueueWriteBuffer(queue_sin, M2_clmem_sin, CL_TRUE, 0, M2_size * sizeof(float), M2, 0, NULL, NULL);
-
-    clSetKernelArg(kernel_sin, 0, sizeof(float), (void *) &min_non_zero);
-    clSetKernelArg(kernel_sin, 1, sizeof(M2_clmem_sin), (void *) &M2_clmem_sin);
-    clSetKernelArg(kernel_sin, 2, sizeof(M2_ret_clmem_sin), (void *) &M2_ret_clmem_sin);
-
-    size_t uGlobalWorkSize = M2_size;
-    size_t uLocalWorkSize = num_cores;
-    clEnqueueNDRangeKernel(
-            queue_sin,
-            kernel_sin,
-            1,
-            NULL,
-            &uGlobalWorkSize,
-            &uLocalWorkSize,
-            0,
-            NULL,
-            NULL);
-    clFinish(queue_sin);
-
-    float X = 0;
-    for (int i = 0; i < M2_size / num_cores; ++i)
-        X += puData_sin[i];
-    return X;
-}
-
-void cl_sin_init(int M2_size) {
-    cl_platform_id platform;
-    cl_int ret = clGetPlatformIDs(1, &platform, &platformCount);
-
-    ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, &uNumCPU);
-
-    context_sin = clCreateContext(NULL, 1, &device, NULL, NULL, &ret);
-
-    queue_sin = clCreateCommandQueue(context_sin, device, 0, &ret);
-
-    createProgram_sin("/home/hotaro/ifmo/parallel-computing/lab6/sum_sin.cl");
-    program_sin = clCreateProgramWithSource(context_sin, 1, (const char **) &source_str_sin,
-                                            (const size_t *) &source_size_sin, &ret);
-
-    ret = clBuildProgram(program_sin, 1, &device, "-cl-std=CL1.2", NULL, NULL);
-    printf("clBuildProgram ret %d\n", ret);
-    if (ret == CL_BUILD_PROGRAM_FAILURE) {
-        size_t log_size;
-        clGetProgramBuildInfo(program_sin, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
-        char *log = (char *) malloc(log_size);
-        clGetProgramBuildInfo(program_sin, device, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
-        printf("%s\n", log);
-    }
-
-    kernel_sin = clCreateKernel(program_sin, "sum_sin", &ret);
-
-    M2_clmem_sin = clCreateBuffer(context_sin, CL_MEM_READ_ONLY, M2_size * sizeof(float), NULL, &ret);
-    M2_ret_clmem_sin = clCreateBuffer(context_sin, CL_MEM_WRITE_ONLY, M2_size * sizeof(float), NULL, &ret);
-
-    puData_sin = (cl_float *) clEnqueueMapBuffer(
-            queue_sin,
-            M2_ret_clmem_sin,
-            CL_TRUE,
-            CL_MAP_READ,
-            0,
-            M2_size / num_cores * sizeof(cl_float),
-            0,
-            NULL,
-            NULL,
-            NULL);
-}
-
-void cl_mrg_init(int M2_size) {
-    cl_platform_id platform;
-    cl_int ret = clGetPlatformIDs(1, &platform, &platformCount);
-
-    ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, &uNumCPU);
-
-    context_mrg = clCreateContext(NULL, 1, &device, NULL, NULL, &ret);
-
-    queue_mrg = clCreateCommandQueue(context_mrg, device, 0, &ret);
-
-    createProgram_mrg("/home/hotaro/ifmo/parallel-computing/lab6/stage_merge.cl");
-    program_mrg = clCreateProgramWithSource(context_mrg, 1, (const char **) &source_str_mrg,
-                                            (const size_t *) &source_size_mrg, &ret);
-
-    ret = clBuildProgram(program_mrg, 1, &device, "-cl-std=CL1.2", NULL, NULL);
-    if (ret == CL_BUILD_PROGRAM_FAILURE) {
-        size_t log_size;
-        clGetProgramBuildInfo(program_mrg, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
-        char *log = (char *) malloc(log_size);
-        clGetProgramBuildInfo(program_mrg, device, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
-        printf("%s\n", log);
-    }
-
-    kernel_mrg = clCreateKernel(program_mrg, "merge", &ret);
-
-    M1_clmem_mrg = clCreateBuffer(context_mrg, CL_MEM_READ_ONLY, M2_size * sizeof(float), NULL, &ret);
-    M2_clmem_mrg = clCreateBuffer(context_mrg, CL_MEM_READ_ONLY, M2_size * sizeof(float), NULL, &ret);
-    M2_ret_clmem_mrg = clCreateBuffer(context_mrg, CL_MEM_WRITE_ONLY, M2_size * sizeof(float), NULL, &ret);
-
-    puData_mrg = (cl_float *) clEnqueueMapBuffer(
-            queue_mrg,
-            M2_ret_clmem_mrg,
-            CL_TRUE,
-            CL_MAP_READ,
-            0,
-            M2_size * sizeof(cl_float),
-            0,
-            NULL,
-            NULL,
-            NULL);
-}
-
-void cl_sin_destroy() {
-    clEnqueueUnmapMemObject(queue_sin, M2_ret_clmem_sin, puData_sin, 0, NULL, NULL);
-    clReleaseContext(context_sin);
-    clReleaseCommandQueue(queue_sin);
-    clReleaseProgram(program_sin);
-    free(source_str_sin);
-    clReleaseKernel(kernel_sin);
-}
-
-void cl_mrg_destroy() {
-    clEnqueueUnmapMemObject(queue_mrg, M2_ret_clmem_mrg, puData_mrg, 0, NULL, NULL);
-    clReleaseContext(context_mrg);
-    clReleaseCommandQueue(queue_mrg);
-    clReleaseProgram(program_mrg);
-    free(source_str_mrg);
-    clReleaseKernel(kernel_mrg);
 }
