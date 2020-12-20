@@ -600,7 +600,7 @@ void cl_sin_init(int M2_size) {
 
     queue_sin = clCreateCommandQueue(context_sin, device, 0, &ret);
 
-    createProgram_sin("/home/hotaro/ifmo/parallel-computing/lab6/sum_sin.cl");
+    createProgram_sin("/home/hotaro/ifmo/parallel-computing/lab6/stage_reduce.cl");
     program_sin = clCreateProgramWithSource(context_sin, 1, (const char **) &source_str_sin,
                                             (const size_t *) &source_size_sin, &ret);
 
