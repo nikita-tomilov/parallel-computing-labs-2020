@@ -329,7 +329,7 @@ void createProgram(char *fileName) {
     fclose(program_handle);
 }
 
-void RunWithOpenCL(char* source_file_path, char* func_name, float *M1, int M1_size, float *M2, int M2_size, int* num_groups) {
+void RunWithOpenCL(char* func_name, float *M1, int M1_size, float *M2, int M2_size, int* num_groups) {
     cl_platform_id platform;
     cl_int ret = clGetPlatformIDs(1, &platform, &platformCount);
     debug_print_ret_code("clGetPlatformIDs", ret);
@@ -344,7 +344,7 @@ void RunWithOpenCL(char* source_file_path, char* func_name, float *M1, int M1_si
     cl_command_queue queue = clCreateCommandQueue(context, device, 0, &ret);
     debug_print_ret_code("clCreateCommandQueue", ret);
 
-    createProgram(source_file_path);
+    createProgram("kernel.cl");
     cl_program program = clCreateProgramWithSource(context, 1, (const char **) &source_str,
                                                    (const size_t *) &source_size, &ret);
     debug_print_ret_code("clCreateProgramWithSource ret", ret);
@@ -482,7 +482,7 @@ int main(int argc, char *argv[]) {
         //этап Merge
         if (WORK_PARALLEL) {
             //OpenCL
-            RunWithOpenCL("stage_merge.cl", "merge", M1, M2_size, M2, M2_size, NULL);
+            RunWithOpenCL("merge", M1, M2_size, M2, M2_size, NULL);
         } else {
             Merge(fullChunk(M2, M1, M2_size));
         }
@@ -509,7 +509,7 @@ int main(int argc, char *argv[]) {
             memcpy(M2_copy, M2, M2_size * sizeof(float));
             float local[1];
             int num_groups = 0;
-            RunWithOpenCL("stage_reduce_1.cl", "find_mnz", local, 1, M2_copy, M2_size, &num_groups);
+            RunWithOpenCL("find_mnz", local, 1, M2_copy, M2_size, &num_groups);
             for (int o = 0; o < num_groups; o++) {
                 if ((minNotZero > M2_copy[o]) && (M2_copy[o] != 0)) {
                     minNotZero = M2_copy[o];
@@ -530,7 +530,7 @@ int main(int argc, char *argv[]) {
             int num_groups = 0;
             local[0] = minNotZero;
             num_groups = 0;
-            RunWithOpenCL("stage_reduce_2.cl", "sum_sin", local, 1, M2, M2_size, &num_groups);
+            RunWithOpenCL("sum_sin", local, 1, M2, M2_size, &num_groups);
             for (int o = 0; o < num_groups; o++) {
                 X += M2[o];
             }
