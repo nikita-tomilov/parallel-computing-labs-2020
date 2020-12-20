@@ -286,6 +286,14 @@ long get_time_us() {
     return ans;
 }
 
+long profiling_time_counter = 0;
+
+long get_profiling_time_us() {
+    long tmp = profiling_time_counter;
+    profiling_time_counter = 0;
+    return tmp;
+}
+
 unsigned int gSeed;
 
 float gA;
@@ -378,7 +386,7 @@ void teardownOpenCL() {
 void RunWithOpenCL(char *func_name, float *M1, int M1_size, float *M2, int M2_size) {
     cl_int ret;
 
-    cl_command_queue queue = clCreateCommandQueue(context, device, 0, &ret);
+    cl_command_queue queue = clCreateCommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &ret);
     debug_print_ret_code("clCreateCommandQueue", ret);
 
     cl_kernel kernel = clCreateKernel(program, func_name, &ret);
@@ -402,8 +410,16 @@ void RunWithOpenCL(char *func_name, float *M1, int M1_size, float *M2, int M2_si
 
     size_t uGlobalWorkSize = M2_size;
     size_t retMemSize = M2_size;
-    clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &uGlobalWorkSize, NULL, 0, NULL, NULL);
+    cl_event event;
+    clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &uGlobalWorkSize, NULL, 0, NULL, &event);
+    clWaitForEvents(1, &event);
     clFinish(queue);
+
+    cl_ulong start = 0, end = 0;
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &start, NULL);
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &end, NULL);
+    cl_double execTimeUs = (cl_double)(end - start)*(cl_double)(1e-03);
+    profiling_time_counter += execTimeUs;
 
     cl_float *puData = (cl_float *) clEnqueueMapBuffer(queue, ret_clmem, CL_TRUE, CL_MAP_READ, 0,
                                                        retMemSize * sizeof(cl_float), 0, NULL, NULL, NULL);
@@ -427,7 +443,9 @@ int main(int argc, char *argv[]) {
     long delta_ms;
     long delta_generate_stage_us = 0;
     long delta_map_stage_us = 0;
+    long delta_map_stage_us_prof = 0;
     long delta_merge_stage_us = 0;
+    long delta_merge_stage_us_prof = 0;
     long delta_sort_stage_us = 0;
     long delta_reduce_stage_us = 0;
     int N;
@@ -495,6 +513,7 @@ int main(int argc, char *argv[]) {
         }
 
         delta_map_stage_us += get_time_us();
+        delta_map_stage_us_prof += get_profiling_time_us();
 
         //этап Merge
         if (WORK_PARALLEL) {
@@ -505,6 +524,7 @@ int main(int argc, char *argv[]) {
         }
 
         delta_merge_stage_us += get_time_us();
+        delta_merge_stage_us_prof += get_profiling_time_us();
 
         /* Отсортировать массив с результатами указанным методом */
         //aka этап Sort
@@ -559,7 +579,9 @@ int main(int argc, char *argv[]) {
     printf("\nN=%d. Milliseconds passed: %ld\n", N, delta_ms); /* T2 - T1 */
     printf("Generate:%ld\n", delta_generate_stage_us);
     printf("Map:%ld\n", delta_map_stage_us);
+    printf("Prof map:%ld\n", delta_map_stage_us_prof);
     printf("Merge:%ld\n", delta_merge_stage_us);
+    printf("Prof merge:%ld\n", delta_merge_stage_us_prof);
     printf("Sort:%ld\n", delta_sort_stage_us);
     printf("Reduce:%ld\n", delta_reduce_stage_us);
 
