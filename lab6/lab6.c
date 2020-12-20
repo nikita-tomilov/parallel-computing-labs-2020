@@ -34,6 +34,7 @@ void debug_print_ret_code(char *func, int ret) {
 int NUM_THREADS = 4;
 int CHUNK_SIZE = 20;
 int WORK_PARALLEL = 1;
+int WORK_OPENCL = 1;
 
 void merge(float arr[], int l, int m, int r) {
     int n1 = m - l + 1;
@@ -436,7 +437,7 @@ void RunWithOpenCL(char *func_name, float *M1, int M1_size, float *M2, int M2_si
 
 int main(int argc, char *argv[]) {
     if ((argc < 2) || (argc > 5)) {
-        printf("usage: %s N [ thread_count [ chunk_size ] ]\n", argv[0]);
+        printf("usage: %s N [ thread_count [ chunk_size [ --noopencl ] ] ]\n", argv[0]);
         return -1;
     }
     int i = 0;
@@ -473,10 +474,13 @@ int main(int argc, char *argv[]) {
             if (argc > 3) {
                 CHUNK_SIZE = (int) strtol(argv[3], &end, 10);
             }
+            if (argc > 4) {
+                WORK_OPENCL = 0;
+            }
         }
     }
 
-    printf("mode Parallel=%d, NumThreads=%d, ChunkSize=%d\n", WORK_PARALLEL, NUM_THREADS, CHUNK_SIZE);
+    printf("mode Parallel=%d, NumThreads=%d, ChunkSize=%d, OpenCL=%d\n", WORK_PARALLEL, NUM_THREADS, CHUNK_SIZE, WORK_OPENCL);
 
     if (WORK_PARALLEL) {
         setupOpenCLContext();
@@ -503,10 +507,15 @@ int main(int argc, char *argv[]) {
 
         /* Решить поставленную задачу, заполнить массив с результатами */
         if (WORK_PARALLEL) {
-            //aka этап Map для M1
-            RunWithOpenCL("m1map", M1, N, M1, N);
-            //этап Map для M2
-            RunWithOpenCL("m2map", M2_copy, M2_size, M2, M2_size);
+            if (WORK_OPENCL) {
+                //aka этап Map для M1
+                RunWithOpenCL("m1map", M1, N, M1, N);
+                //этап Map для M2
+                RunWithOpenCL("m2map", M2_copy, M2_size, M2, M2_size);
+            } else {
+                multiThreadComputing(M1, NULL, N, NUM_THREADS, M1Map, CHUNK_SIZE);
+                multiThreadComputing(M2, M2_copy, M2_size, NUM_THREADS, M2Map, CHUNK_SIZE);
+            }
         } else {
             M1Map(fullChunk(M1, NULL, N));
             M2Map(fullChunk(M2, M2_copy, M2_size));
@@ -517,8 +526,12 @@ int main(int argc, char *argv[]) {
 
         //этап Merge
         if (WORK_PARALLEL) {
-            //OpenCL
-            RunWithOpenCL("merge", M1, M2_size, M2, M2_size);
+            if (WORK_OPENCL) {
+                //OpenCL
+                RunWithOpenCL("merge", M1, M2_size, M2, M2_size);
+            } else {
+                multiThreadComputing(M2, M1, M2_size, NUM_THREADS, Merge, CHUNK_SIZE);
+            }
         } else {
             Merge(fullChunk(M2, M1, M2_size));
         }
