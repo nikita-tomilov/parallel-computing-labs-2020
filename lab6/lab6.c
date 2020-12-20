@@ -1,6 +1,5 @@
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
-#define GENERATE_PARALLEL 0
-#define USE_OPENCL 0
+#define GENERATE_PARALLEL 1
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,8 +34,6 @@ void debug_print_ret_code(char *func, int ret) {
 int NUM_THREADS = 4;
 int CHUNK_SIZE = 20;
 int WORK_PARALLEL = 1;
-
-#define COMPUTE_UNITS 8
 
 void merge(float arr[], int l, int m, int r) {
     int n1 = m - l + 1;
@@ -506,6 +503,7 @@ int main(int argc, char *argv[]) {
         } else {
             Merge(fullChunk(M2, M1, M2_size));
         }
+
         delta_merge_stage_us += get_time_us();
 
         /* Отсортировать массив с результатами указанным методом */
