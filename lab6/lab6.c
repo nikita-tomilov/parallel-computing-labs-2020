@@ -309,6 +309,9 @@ char *source_str;
 cl_uint platformCount;
 cl_device_id device;
 cl_uint uNumCPU;
+cl_context context;
+
+cl_program program;
 
 void createProgram(char *fileName) {
     FILE *program_handle;
@@ -329,7 +332,7 @@ void createProgram(char *fileName) {
     fclose(program_handle);
 }
 
-void RunWithOpenCL(char* func_name, float *M1, int M1_size, float *M2, int M2_size, int* num_groups) {
+void setupOpenCLContext() {
     cl_platform_id platform;
     cl_int ret = clGetPlatformIDs(1, &platform, &platformCount);
     debug_print_ret_code("clGetPlatformIDs", ret);
@@ -338,14 +341,14 @@ void RunWithOpenCL(char* func_name, float *M1, int M1_size, float *M2, int M2_si
     ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_ALL, 1, &device, &uNumCPU);
     debug_print_ret_code("clGetDeviceIDs", ret);
 
-    cl_context context = clCreateContext(NULL, 1, &device, NULL, NULL, &ret);
+    context = clCreateContext(NULL, 1, &device, NULL, NULL, &ret);
     debug_print_ret_code("clCreateContext", ret);
+}
 
-    cl_command_queue queue = clCreateCommandQueue(context, device, 0, &ret);
-    debug_print_ret_code("clCreateCommandQueue", ret);
-
+void buildKernelProgram() {
+    cl_int ret;
     createProgram("kernel.cl");
-    cl_program program = clCreateProgramWithSource(context, 1, (const char **) &source_str,
+    program = clCreateProgramWithSource(context, 1, (const char **) &source_str,
                                                    (const size_t *) &source_size, &ret);
     debug_print_ret_code("clCreateProgramWithSource ret", ret);
 
@@ -358,6 +361,22 @@ void RunWithOpenCL(char* func_name, float *M1, int M1_size, float *M2, int M2_si
         clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
         printf("%s\n", log);
     }
+    free(source_str);
+}
+
+void teardownOpenCL() {
+    clReleaseContext(context);
+    clReleaseProgram(program);
+}
+
+void RunWithOpenCL(char* func_name, float *M1, int M1_size, float *M2, int M2_size, int* num_groups) {
+    cl_int ret;
+
+    setupOpenCLContext();
+    buildKernelProgram();
+
+    cl_command_queue queue = clCreateCommandQueue(context, device, 0, &ret);
+    debug_print_ret_code("clCreateCommandQueue", ret);
 
     cl_kernel kernel = clCreateKernel(program, func_name, &ret);
     debug_print_ret_code("clCreateKernel", ret);
@@ -399,11 +418,10 @@ void RunWithOpenCL(char* func_name, float *M1, int M1_size, float *M2, int M2_si
     clReleaseMemObject(M1_clmem);
     clReleaseMemObject(M2_clmem);
     clReleaseMemObject(ret_clmem);
-    clReleaseContext(context);
     clReleaseCommandQueue(queue);
-    clReleaseProgram(program);
-    free(source_str);
     clReleaseKernel(kernel);
+
+    teardownOpenCL();
 }
 
 int main(int argc, char *argv[]) {
