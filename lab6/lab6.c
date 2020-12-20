@@ -1,7 +1,6 @@
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define GENERATE_PARALLEL 0
-#define PTHREAD_PARALLEL 1
-#define OPENCL_PARALLEL 1
+#define USE_OPENCL 0
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +36,7 @@ int NUM_THREADS = 4;
 int CHUNK_SIZE = 20;
 int WORK_PARALLEL = 1;
 
-#define GROUP_SIZE 12
+#define COMPUTE_UNITS 8
 
 void merge(float arr[], int l, int m, int r) {
     int n1 = m - l + 1;
@@ -234,6 +233,16 @@ void InsertionSortChunk(Chunk_t chunk) {
     }
 }
 
+float reductionMin(float a, float b) {
+    if (isnan(b)) return a;
+    return MIN(a, b);
+}
+
+float reductionSum(float a, float b) {
+    if (isnan(b)) return a;
+    return a + b;
+}
+
 float MinNotZero(Chunk_t chunk) {
     float minNotZero = DBL_MAX;
     float *M2 = chunk.array1;
@@ -349,7 +358,7 @@ void buildKernelProgram() {
     cl_int ret;
     createProgram("kernel.cl");
     program = clCreateProgramWithSource(context, 1, (const char **) &source_str,
-                                                   (const size_t *) &source_size, &ret);
+                                        (const size_t *) &source_size, &ret);
     debug_print_ret_code("clCreateProgramWithSource ret", ret);
 
     ret = clBuildProgram(program, 1, &device, "-cl-std=CL1.2", NULL, NULL);
@@ -369,7 +378,7 @@ void teardownOpenCL() {
     clReleaseProgram(program);
 }
 
-void RunWithOpenCL(char* func_name, float *M1, int M1_size, float *M2, int M2_size, int* num_groups) {
+void RunWithOpenCL(char *func_name, float *M1, int M1_size, float *M2, int M2_size) {
     cl_int ret;
 
     cl_command_queue queue = clCreateCommandQueue(context, device, 0, &ret);
@@ -396,14 +405,7 @@ void RunWithOpenCL(char* func_name, float *M1, int M1_size, float *M2, int M2_si
 
     size_t uGlobalWorkSize = M2_size;
     size_t retMemSize = M2_size;
-    if (num_groups != NULL) {
-        size_t uLocalWorkSize = GROUP_SIZE;
-        retMemSize = M2_size / GROUP_SIZE + 1;
-        clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &uGlobalWorkSize, &uLocalWorkSize, 0, NULL, NULL);
-        *num_groups = retMemSize;
-    } else {
-        clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &uGlobalWorkSize, NULL, 0, NULL, NULL);
-    }
+    clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &uGlobalWorkSize, NULL, 0, NULL, NULL);
     clFinish(queue);
 
     cl_float *puData = (cl_float *) clEnqueueMapBuffer(queue, ret_clmem, CL_TRUE, CL_MAP_READ, 0,
@@ -487,9 +489,9 @@ int main(int argc, char *argv[]) {
         /* Решить поставленную задачу, заполнить массив с результатами */
         if (WORK_PARALLEL) {
             //aka этап Map для M1
-            multiThreadComputing(M1, NULL, N, NUM_THREADS, M1Map, CHUNK_SIZE);
+            RunWithOpenCL("m1map", M1, N, M1, N);
             //этап Map для M2
-            multiThreadComputing(M2, M2_copy, M2_size, NUM_THREADS, M2Map, CHUNK_SIZE);
+            RunWithOpenCL("m2map", M2_copy, M2_size, M2, M2_size);
         } else {
             M1Map(fullChunk(M1, NULL, N));
             M2Map(fullChunk(M2, M2_copy, M2_size));
@@ -500,7 +502,7 @@ int main(int argc, char *argv[]) {
         //этап Merge
         if (WORK_PARALLEL) {
             //OpenCL
-            RunWithOpenCL("merge", M1, M2_size, M2, M2_size, NULL);
+            RunWithOpenCL("merge", M1, M2_size, M2, M2_size);
         } else {
             Merge(fullChunk(M2, M1, M2_size));
         }
@@ -523,19 +525,13 @@ int main(int argc, char *argv[]) {
         //aka Reduce-1
         float minNotZero = FLT_MAX;
         if (WORK_PARALLEL) {
-            //OpenCL
-            memcpy(M2_copy, M2, M2_size * sizeof(float));
-            float local[1];
-            int num_groups = 0;
-            RunWithOpenCL("find_mnz", local, 1, M2_copy, M2_size, &num_groups);
-            for (int o = 0; o < num_groups; o++) {
-                if ((minNotZero > M2_copy[o]) && (M2_copy[o] != 0)) {
-                    minNotZero = M2_copy[o];
-                }
-            }
+            multiThreadComputingReduction(M2, NULL, M2_size, NUM_THREADS, MinNotZero, reductionMin, DBL_MAX,
+                                          CHUNK_SIZE);
+            minNotZero = reductionResult;
         } else {
             minNotZero = MinNotZero(fullChunk(M2, NULL, M2_size));
         }
+        //printf("for i = %d minNotZero = %f\n", i, minNotZero);
 
         /*Рассчитать сумму синусов тех элементов массива М2,
           которые при делении на минимальный ненулевой
@@ -543,15 +539,9 @@ int main(int argc, char *argv[]) {
         //aka Reduce-2
         float X = 0;
         if (WORK_PARALLEL) {
-            //OpenCL
-            float local[1];
-            int num_groups = 0;
-            local[0] = minNotZero;
-            num_groups = 0;
-            RunWithOpenCL("sum_sin", local, 1, M2, M2_size, &num_groups);
-            for (int o = 0; o < num_groups; o++) {
-                X += M2[o];
-            }
+            multiThreadComputingReduction(M2, &minNotZero, M2_size, NUM_THREADS, SumOfSine, reductionSum, 0,
+                                          CHUNK_SIZE);
+            X = reductionResult;
         } else {
             X = SumOfSine(fullChunk(M2, &minNotZero, M2_size));
         }
